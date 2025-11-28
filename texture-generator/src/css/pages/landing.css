@@ -1,0 +1,19 @@
+.page-landing {
+	display: grid;
+	align-content: center;
+	justify-content: center;
+	text-align: center;
+	
+	> * + * {
+		margin-top: 20px
+	}
+	
+	.title {
+		font-size: 3rem;
+		font-weight: 600;
+	}
+	
+	.link {
+		color: oklch(70% 0.2 90);
+	}
+}
