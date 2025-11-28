@@ -27,6 +27,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    defaults:
+        run:
+            working-directory: ./texture-generator
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -34,12 +37,11 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: 'npm'
+          cache: 'npm',
+          cache-dependency-path: './texture-generator/bun.lockb'
       - name: Install dependencies
-        working-directory: ./texture-generator
         run: npm install
       - name: Build
-        working-directory: ./texture-generator
         run: npm run build
       - name: Setup Pages
         uses: actions/configure-pages@v5
