@@ -345,7 +345,7 @@ export default function Generator() {
 	return (
 		<div class="page page-generator">
 			<header>
-				<h1 class="title">Texture Generator</h1>
+				<h1 class="title">Texture Generator</h1> — Work in Progress; Generates only the common texture right now with no download yet
 			</header>
 			<div class="textures">
 				<TexturePreview preview={State.Textures.Common.value}/>

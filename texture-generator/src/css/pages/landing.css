@@ -3,6 +3,7 @@
 	align-content: center;
 	justify-content: center;
 	text-align: center;
+	padding: 0 20px;
 	
 	> * + * {
 		margin-top: 20px
@@ -15,5 +16,17 @@
 	
 	.link {
 		color: oklch(70% 0.2 90);
+		
+		.favicon {
+			display: inline-block;
+			width: 1em;
+			height: 1em;
+			margin-right: 0.3em;
+			vertical-align: -12.5%;
+		}
+	}
+	
+	p {
+		max-width: 60ch;
 	}
 }
