@@ -6,6 +6,19 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" href="./src/index.css"/>
 	<title>NexiiText5 Texture Generator</title>
+	<script>
+		// Single Page Apps for GitHub Pages
+		// MIT License
+		// https://github.com/rafgraph/spa-github-pages
+		(function(location) {
+			if (location.search[1] === '/' ) {
+				let decoded = location.search.slice(1).split('&').map(s => s.replace(/~and~/g, '&')).join('?');
+				window.history.replaceState(null, null,
+					location.pathname.slice(0, -1) + decoded + location.hash
+				);
+			}
+		}(window.location));
+	</script>
 </head>
 <body>
 	<div id="app"></div>
