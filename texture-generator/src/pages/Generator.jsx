@@ -4,7 +4,7 @@ import { lazy, LocationProvider, ErrorBoundary, Router, Route } from 'preact-iso
 import TGA from '../lib/tga.js';
 import { length } from '../lib/vec2.js';
 import { AsyncZipDeflate, Zip, ZipPassThrough } from 'fflate';
-import { CharsetCommon, CharsetMultiLanguages, CharsetEmojis, CharsetChinese, CharsetJapanese, CharsetKorean, CharsetVietnamese} from '../lib/characters.js';
+import { CharsetCommon, CharsetMultiLanguages, CharsetEmojis, CharsetCJK } from '../lib/characters.js';
 
 
 async function generateUnicodeTexture({
@@ -119,8 +119,25 @@ async function generateUnicodeTexture({
 			let left = x - halfWidth;
 			let right = x + halfWidth;
 			
+			
+			if(isFixedWidth && height > cellSize)
+			{
+				// Crop
+				// This is a bit of a temporary hack to prevent tall glyphs,
+				// there were only a couple which seemed mostly unaffected
+				ctx.save();
+				ctx.beginPath();
+				ctx.rect(left, top, columnWidth, cellSize);
+				ctx.clip();
+			}
+			
 			// Render glyph
 			ctx.fillText(char, x, baseline);
+			
+			if(isFixedWidth && height > cellSize)
+			{
+				ctx.restore();
+			}
 			
 			
 			// TODO: Fix this; Try to confirm whether black/white letterform or a colorized/greyscale glyph (e.g. emoji)
@@ -171,6 +188,12 @@ async function generateUnicodeTexture({
 					Math.ceil(width),
 					Math.ceil(height),
 				]);
+				
+				// if(height > cellSize)
+				// {
+				// 	ctx.strokeStyle = 'lch(80 80 0)';
+				// 	ctx.strokeRect(left, top, width, height);
+				// }
 				
 				// ctx.strokeRect(left, top + height, width, 1);
 				// ctx.strokeRect(left, top, 1, height);
@@ -395,8 +418,8 @@ function DownloadAsZip(props) {
 	
 	useEffect(async () => {
 		if(!State.Textures.Common.value) return;
-		if(!State.Textures.Japanese.value) return;
 		if(!State.Textures.Emojis.value) return;
+		if(!State.Textures.CJK.value) return;
 		if(!State.SetupScript.value) return;
 		
 		const zip = new Zip((err, data, final) => {
@@ -409,8 +432,8 @@ function DownloadAsZip(props) {
 		
 	}, [
 		State.Textures.Common.value,
-		State.Textures.Japanese.value,
 		State.Textures.Emojis.value,
+		State.Textures.CJK.value,
 		State.SetupScript.value,
 	]);
 	
@@ -441,10 +464,7 @@ const State = {
 		Common: signal(null),
 		MultiLanguages: signal(null),
 		Emojis: signal(null),
-		Chinese: signal(null),
-		Japanese: signal(null),
-		// Korean: signal(null),
-		Vietnamese: signal(null),
+		CJK: signal(null),
 	},
 	SetupScript: signal(null),
 	
@@ -493,35 +513,13 @@ export default function Generator() {
 			isFixedWidth: true,
 			font: `400 120px Inter, sans-serif`,
 		});
-		State.Textures.Chinese.value = await generateUnicodeTexture({
-			name: 'Chinese',
-			characters: CharsetChinese,
+		State.Textures.CJK.value = await generateUnicodeTexture({
+			name: 'CJK',
+			characters: CharsetCJK,
 			backColor,
 			textColor,
 			isFixedWidth: true,
 			font: `400 64px Inter, sans-serif`,
-		});
-		State.Textures.Japanese.value = await generateUnicodeTexture({
-			name: 'Japanese',
-			characters: CharsetJapanese,
-			backColor,
-			textColor,
-			cellSize: 64,
-			isFixedWidth: true,
-			font: `400 64px Inter, sans-serif`,
-		});
-		// State.Textures.Korean.value = await generateUnicodeTexture({
-		// 	name: 'Korean',
-		// 	characters: CharsetKorean,
-		// 	backColor,
-		// 	textColor,
-		// 	font: `400 64px Inter, sans-serif`,
-		// });
-		State.Textures.Vietnamese.value = await generateUnicodeTexture({
-			name: 'Vietnamese',
-			characters: CharsetVietnamese,
-			backColor,
-			textColor,
 		});
 	}, [
 		State.backColor.value,
@@ -537,10 +535,7 @@ export default function Generator() {
 				<TexturesPreview data={State.Textures.Common.value}/>
 				<TexturesPreview data={State.Textures.MultiLanguages.value}/>
 				<TexturesPreview data={State.Textures.Emojis.value}/>
-				<TexturesPreview data={State.Textures.Chinese.value}/>
-				<TexturesPreview data={State.Textures.Japanese.value}/>
-				{/* <TexturesPreview data={State.Textures.Korean.value}/> */}
-				<TexturesPreview data={State.Textures.Vietnamese.value}/>
+				<TexturesPreview data={State.Textures.CJK.value}/>
 			</div>
 			<DownloadAsZip/>
 		</div>
