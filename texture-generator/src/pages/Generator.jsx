@@ -16,9 +16,11 @@ async function generateUnicodeTexture({
 	backColor = 'transparent',
 	textColor = 'white',
 	characters = [],
+	isFixedWidth = false,
 }) {
 	await document.fonts.load(font);
 	
+	if(isFixedWidth) columns = textureSize / cellSize;
 	const rows = textureSize / cellSize;
 	const columnWidth = textureSize / columns;
 	const data = {};
@@ -300,52 +302,10 @@ async function generateUnicodeTexture({
 			columns,
 			rows,
 			characters: allCharacters,
+			isFixedWidth,
 		}
 	};
 }
-
-
-
-function TexturePreview(props) {
-	const [src, setSrc] = useState(null);
-	
-	useEffect(() => {
-		if(props.preview) props.preview.textures[0].toBlob((blob) => {
-			const url = URL.createObjectURL(blob);
-			if(src) URL.revokeObjectURL(src);
-			setSrc(url);
-		});
-		
-		else if(src) { URL.revokeObjectURL(src); setSrc(null); }
-	}, [props.preview]);
-	
-	if(props.preview)
-	{
-		const { name, textureSize, font, columns, rows, characters } = props.preview.meta;
-		return (
-			<figure class="unicode-texture">
-				<div class="preview-container">
-					<img class="preview" src={src}/>
-					<a class="expand" href={src} target="_blank">
-						<svg class="icon"><use href="#icon-expand"/></svg>
-					</a>
-				</div>
-				<figcaption>
-					{name}<br/>
-					{props.preview.textures.length} &times; {textureSize}&times;{textureSize} texture<br/>
-					{columns}&times;{rows} grid ({columns * rows})<br/>
-					font: <code>{font}</code><br/>
-					{characters.length} characters
-				</figcaption>
-			</figure>
-		);
-	}
-	
-	else return (
-		<figure class="unicode-texture"></figure>
-	);
-}
-
 
 
 function TexturesPreview(props) {
@@ -369,7 +329,7 @@ function TexturesPreview(props) {
 	
 	if(!props.data) return <figure class="unicode-texture"></figure>;
 	
-	const { name, textureSize, font, columns, rows, characters } = props.data.meta;
+	const { name, textureSize, font, columns, rows, characters, isFixedWidth } = props.data.meta;
 	
 	let textureInfo = null;
 	if(props.data.textures.length > 1)
@@ -399,7 +359,7 @@ function TexturesPreview(props) {
 			<figcaption>
 				{name}<br/>
 				{textureInfo}
-				{columns}&times;{rows} grid ({columns * rows})<br/>
+				{columns}&times;{rows} grid ({columns * rows} per){isFixedWidth ? ' (fixed width)' : ' (letter spacing)'}<br/>
 				font: <code>{font}</code><br/>
 				{characters.length} characters
 			</figcaption>
@@ -530,7 +490,7 @@ export default function Generator() {
 			backColor,
 			textColor,
 			cellSize: 128,
-			columns: 16,
+			isFixedWidth: true,
 			font: `400 120px Inter, sans-serif`,
 		});
 		State.Textures.Chinese.value = await generateUnicodeTexture({
@@ -538,7 +498,7 @@ export default function Generator() {
 			characters: CharsetChinese,
 			backColor,
 			textColor,
-			columns: 8,
+			isFixedWidth: true,
 			font: `400 64px Inter, sans-serif`,
 		});
 		State.Textures.Japanese.value = await generateUnicodeTexture({
@@ -546,7 +506,8 @@ export default function Generator() {
 			characters: CharsetJapanese,
 			backColor,
 			textColor,
-			columns: 8,
+			cellSize: 64,
+			isFixedWidth: true,
 			font: `400 64px Inter, sans-serif`,
 		});
 		// State.Textures.Korean.value = await generateUnicodeTexture({
