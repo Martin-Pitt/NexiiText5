@@ -390,6 +390,8 @@ function TexturesPreview(props) {
 		else textureInfo = <>{props.data.textures.length} &times; {textureSize}&times;{textureSize} textures<br/></>;
 	}
 	
+	else if(props.data.textures.length == 0);
+	
 	else textureInfo = <>{textureSize}&times;{props.data.textures[0].height} texture<br/></>;
 	
 	return (
