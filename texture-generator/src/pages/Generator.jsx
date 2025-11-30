@@ -4,7 +4,16 @@ import { lazy, LocationProvider, ErrorBoundary, Router, Route } from 'preact-iso
 import TGA from '../lib/tga.js';
 import { length } from '../lib/vec2.js';
 import { AsyncZipDeflate, Zip, ZipPassThrough } from 'fflate';
-import { CharsetCommon, CharsetMultiLanguages, CharsetEmojis, CharsetCJK } from '../lib/characters.js';
+import {
+	CharsetCommon,
+	CharsetMultiLanguages,
+	CharsetEmojis,
+	CharsetMiscCJK,
+	CharsetChineseSimplified,
+	CharsetChineseTraditional,
+	CharsetJapanese,
+	CharsetKorean,
+} from '../lib/characters.js';
 
 
 async function generateUnicodeTexture({
@@ -419,7 +428,7 @@ function DownloadAsZip(props) {
 	useEffect(async () => {
 		if(!State.Textures.Common.value) return;
 		if(!State.Textures.Emojis.value) return;
-		if(!State.Textures.CJK.value) return;
+		// if(!State.Textures.CJK.value) return;
 		if(!State.SetupScript.value) return;
 		
 		const zip = new Zip((err, data, final) => {
@@ -433,7 +442,7 @@ function DownloadAsZip(props) {
 	}, [
 		State.Textures.Common.value,
 		State.Textures.Emojis.value,
-		State.Textures.CJK.value,
+		// State.Textures.CJK.value,
 		State.SetupScript.value,
 	]);
 	
@@ -464,7 +473,11 @@ const State = {
 		Common: signal(null),
 		MultiLanguages: signal(null),
 		Emojis: signal(null),
-		CJK: signal(null),
+		MiscCJK: signal(null),
+		ChineseSimplified: signal(null),
+		ChineseTraditional: signal(null),
+		Japanese: signal(null),
+		Korean: signal(null),
 	},
 	SetupScript: signal(null),
 	
@@ -495,13 +508,15 @@ export default function Generator() {
 			textColor,
 			cellSize: 2048/23,
 			columns: 8,
-			font: `400 ${(50/64)*(2048/23)}px Inter, sans-serif`,
+			font: `400 ${((50/64)*(2048/23)).toFixed(3)}px Inter, sans-serif`,
 		});
 		State.Textures.MultiLanguages.value = await generateUnicodeTexture({
 			name: 'MultiLanguages',
 			characters: CharsetMultiLanguages,
 			backColor,
 			textColor,
+			cellSize: 64,
+			columns: 10,
 			font: `400 52px Inter, sans-serif`,
 		});
 		State.Textures.Emojis.value = await generateUnicodeTexture({
@@ -511,16 +526,38 @@ export default function Generator() {
 			textColor,
 			cellSize: 128,
 			isFixedWidth: true,
-			font: `400 120px Inter, sans-serif`,
+			font: `400 110px 'Noto Color Emoji', Inter, sans-serif`,
 		});
-		State.Textures.CJK.value = await generateUnicodeTexture({
-			name: 'CJK',
-			characters: CharsetCJK,
+		let CJKSettings = {
 			backColor,
 			textColor,
 			isFixedWidth: true,
-			font: `400 64px Inter, sans-serif`,
-		});
+		};
+		State.Textures.MiscCJK.value = await generateUnicodeTexture(Object.assign({
+			name: 'CJK Misc/Punctuation',
+			characters: CharsetMiscCJK,
+			font: `400 64px 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP', 'Noto Sans KR', Inter, sans-serif`,
+		}, CJKSettings));
+		State.Textures.ChineseSimplified.value = await generateUnicodeTexture(Object.assign({
+			name: 'ChineseSimplified',
+			characters: CharsetChineseSimplified,
+			font: `400 64px 'Noto Sans SC', Inter, sans-serif`,
+		}, CJKSettings));
+		State.Textures.ChineseTraditional.value = await generateUnicodeTexture(Object.assign({
+			name: 'ChineseTraditional',
+			characters: CharsetChineseTraditional,
+			font: `400 64px 'Noto Sans TC', Inter, sans-serif`,
+		}, CJKSettings));
+		State.Textures.Japanese.value = await generateUnicodeTexture(Object.assign({
+			name: 'Japanese',
+			characters: CharsetJapanese,
+			font: `400 64px 'Noto Sans JP', Inter, sans-serif`,
+		}, CJKSettings));
+		State.Textures.Korean.value = await generateUnicodeTexture(Object.assign({
+			name: 'Korean',
+			characters: CharsetKorean,
+			font: `400 64px 'Noto Sans KR', Inter, sans-serif`,
+		}, CJKSettings));
 	}, [
 		State.backColor.value,
 		State.textColor.value,
@@ -535,7 +572,11 @@ export default function Generator() {
 				<TexturesPreview data={State.Textures.Common.value}/>
 				<TexturesPreview data={State.Textures.MultiLanguages.value}/>
 				<TexturesPreview data={State.Textures.Emojis.value}/>
-				<TexturesPreview data={State.Textures.CJK.value}/>
+				<TexturesPreview data={State.Textures.MiscCJK.value}/>
+				<TexturesPreview data={State.Textures.ChineseSimplified.value}/>
+				<TexturesPreview data={State.Textures.ChineseTraditional.value}/>
+				<TexturesPreview data={State.Textures.Japanese.value}/>
+				<TexturesPreview data={State.Textures.Korean.value}/>
 			</div>
 			<DownloadAsZip/>
 		</div>

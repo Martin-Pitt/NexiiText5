@@ -34,4 +34,29 @@
 		font-family: 'Oblivion Worn';
 		src: url('./fonts/Oblivion Worn.ttf');
 	}
+	
+	@font-face {
+		font-family: 'Noto Sans SC';
+		src: url('./fonts/Noto_Sans_SC/NotoSansSC-VariableFont_wght.ttf');
+	}
+	
+	@font-face {
+		font-family: 'Noto Sans TC';
+		src: url('./fonts/Noto_Sans_TC/NotoSansTC-VariableFont_wght.ttf');
+	}
+	
+	@font-face {
+		font-family: 'Noto Sans JP';
+		src: url('./fonts/Noto_Sans_JP/NotoSansJP-VariableFont_wght.ttf');
+	}
+	
+	@font-face {
+		font-family: 'Noto Sans KR';
+		src: url('./fonts/Noto_Sans_KR/NotoSansKR-VariableFont_wght.ttf');
+	}
+	
+	@font-face {
+		font-family: 'Noto Color Emoji';
+		src: url('./fonts/Noto_Color_Emoji/NotoColorEmoji-Regular.ttf');
+	}
 }

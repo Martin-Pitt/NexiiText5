@@ -18,8 +18,6 @@
 	
 	.textures {
 		display: grid;
-		/* grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-		justify-items: center; */
 		grid-template-columns: repeat(auto-fit, 300px);
 		justify-content: center;
 		align-items: start;
