@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { signal, effect, computed } from '@preact/signals';
 import { lazy, LocationProvider, ErrorBoundary, Router, Route } from 'preact-iso';
+import classNames from 'classnames';
 import TGA from '../lib/tga.js';
 import { length } from '../lib/vec2.js';
 import { AsyncZipDeflate, Zip, ZipPassThrough } from 'fflate';
@@ -16,399 +17,96 @@ import {
 } from '../lib/characters.js';
 
 
-async function generateUnicodeTexture({
-	name,
-	textureSize = 2048,
-	cellSize = 64,
-	columns = 11,
-	font = '400 40px Inter, sans-serif',
-	backColor = 'transparent',
-	textColor = 'white',
-	characters = [],
-	isFixedWidth = false,
-}) {
-	await document.fonts.load(font);
+function generateSetupScript(fonts) {
+    // local textureIndex, glyphWidth, glyphLeftGap, glyphRightGap, textureX, textureY = table.unpack(lljson.decode(glyph) :: {number});
 	
-	if(isFixedWidth) columns = textureSize / cellSize;
-	const rows = textureSize / cellSize;
-	const columnWidth = textureSize / columns;
-	const data = {};
-	const maxCharacters = columns * rows;
-	const allCharacters = characters.slice();
+	
+	// Map all textures to indices
 	const textures = [];
-	
-	// Render texture canvas per each set of max characters
-	// let chIndex = 0;
-	for(let chIndex = 0; chIndex < Math.ceil(allCharacters.length / maxCharacters); ++chIndex)
+	for(let font of fonts)
 	{
-		characters = allCharacters.slice(chIndex * maxCharacters, (chIndex + 1) * maxCharacters);
+		textures.push(...font.textures);
 		
-		// Setup canvas
-		const canvas = document.createElement('canvas');
-		canvas.width = textureSize;
-		canvas.height = textureSize;
-		canvas.style.aspectRatio = `${textureSize} / ${textureSize}`;
-		const ctx = canvas.getContext('2d', { willReadFrequently: true });
-		
-		// If there is a back color we draw a background
-		// Having a background allows the texture to be rendered softly with anti-aliasing
-		// Avoiding the current issues around alpha masking with legibility issues due to pixelated rendering
-		if(backColor !== 'transparent')
+		for(let character of font.meta.characters)
 		{
-			ctx.fillStyle = backColor;
-			ctx.fillRect(0, 0, textureSize, textureSize);
+			const metrics = font.data[character];
+			metrics.textureIndex = textures.indexOf(metrics.texture);
 		}
-		
-		// Font setup
-		ctx.fillStyle = textColor;
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'top'; // 'alphabetic';
-		ctx.font = font;
-		
-		let baselinePercent = 0.09; // 0.75;
-		
-		let ColorizedGlyphs = new Set();
-		let ColorizedRects = [];
-		let UncoloredRects = [];
-		let index;
-		
-		// Debug glyph heights horizontally to determine how close each row is vertically
-		// This can be used to help measure how far you can get away with tweaking font size vs cell size
-		/*
-		index = 0;
-		for(let char of characters)
-		{
-			// Compute metrics
-			let metrics = ctx.measureText(char);
-			
-			let a = index % columns;
-			let b = Math.floor(index / columns);
-			index++;
-			
-			let x = columnWidth * 0.5 + columnWidth * a;
-			let y = cellSize * b;
-			
-			let baseline = y + cellSize * baselinePercent;
-			let width = metrics.width;
-			let halfWidth = width / 2;
-			let height = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
-			let halfHeight = height / 2;
-			let top = baseline - metrics.actualBoundingBoxAscent;
-			let bottom = baseline + metrics.actualBoundingBoxDescent;
-			let left = x - halfWidth;
-			let right = x + halfWidth;
-			
-			ctx.fillStyle = 'lch(20 80 0)';
-			ctx.fillRect(0, top, canvas.width, height);
-		}
-		ctx.fillStyle = textColor;
-		//*/
-		
-		// Measure and draw each glyph
-		index = 0;
-		for(let char of characters)
-		{
-			// Compute metrics
-			let metrics = ctx.measureText(char);
-			
-			let a = index % columns;
-			let b = Math.floor(index / columns);
-			index++;
-			
-			let x = columnWidth * 0.5 + columnWidth * a;
-			let y = cellSize * b;
-			
-			let baseline = y + cellSize * baselinePercent;
-			let width = metrics.width;
-			let halfWidth = width / 2;
-			let height = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
-			let halfHeight = height / 2;
-			let top = baseline - metrics.actualBoundingBoxAscent;
-			let bottom = baseline + metrics.actualBoundingBoxDescent;
-			let left = x - halfWidth;
-			let right = x + halfWidth;
-			
-			
-			if(isFixedWidth && height > cellSize)
+	}
+	
+	return `-- Replace name with uploaded UUID textures respectively
+	local textures = {
+		${textures.map(texture => `{
+			"${texture.name}",
+			${texture.width},
+			${texture.height},
+		}`).join(',\n\t\t')}
+	}
+	
+	
+	local isFixedWidth = false
+	function saveMetrics(glyph: string, metrics: {})
+		local data = ""
+		if isFixedWidth then
+			data = table.concat({
+				metrics.textureIndex,
+				math.round(metrics.textureX * 8192),
+				math.round(metrics.textureY * 8192)
+			}, ",")
+		else
+			data = table.concat({
+				metrics.glyphWidth,
+				math.floor(metrics.glyphLeftGap),
+				math.floor(metrics.glyphRightGap),
+				metrics.textureIndex,
+				math.round(metrics.textureX * 8192),
+				math.round(metrics.textureY * 8192)
+			}, ",")
+		end
+		ll.LinksetDataWrite(glyph, data)
+	end
+	
+	local characters = {${
+		fonts.map(font => {
+			let data = [];
+			for(let character of font.meta.characters)
 			{
-				// Crop
-				// This is a bit of a temporary hack to prevent tall glyphs,
-				// there were only a couple which seemed mostly unaffected
-				ctx.save();
-				ctx.beginPath();
-				ctx.rect(left, top, columnWidth, cellSize);
-				ctx.clip();
-			}
-			
-			// Render glyph
-			ctx.fillText(char, x, baseline);
-			
-			if(isFixedWidth && height > cellSize)
-			{
-				ctx.restore();
-			}
-			
-			
-			// TODO: Fix this; Try to confirm whether black/white letterform or a colorized/greyscale glyph (e.g. emoji)
-			let isColorized = false;
-			
-			let rx = x - cellSize * baselinePercent;
-			let ry = y + 2;
-			let rw = cellSize * 1.5;
-			let rh = cellSize;
-			
-			// Check if glyph is colorized/greyscale instead of black/white by sampling pixels
-			// in the glyph area and checking the distribution of colors
-			const imageData = ctx.getImageData(rx, ry, rw, rh);
-			let colorCount = 0;
-			let totalCount = 0;
-			for(let i = 0; i < imageData.data.length; i += 4)
-			{
-				const r = imageData.data[i + 0];
-				const g = imageData.data[i + 1];
-				const b = imageData.data[i + 2];
-				const a = imageData.data[i + 3];
-				if(a < 255) continue;
-				totalCount++;
-				if(r < 200) colorCount++;
-				else if(!(r === g && g === b)) colorCount++;
-			}
-			const colorRatio = colorCount / totalCount;
-			if(colorRatio > 0.1) isColorized = true;
-			
-			if(isColorized)
-			{
-				// ctx.strokeStyle = 'lch(80 80 215)';
-				// ctx.strokeRect(rx + 2, ry + 2, rw - 4, rh - 4);
+				const metrics = font.data[character];
 				
-				// ctx.fillStyle = 'lch(80 80 215 / 0.3)';
-				// ctx.fillRect(left, top, width, height);
-				// ctx.fillStyle = textColor;
+				if(character == '"') character = '\\"';
 				
-				ColorizedGlyphs.add(char);
-				ColorizedRects.push([rx, ry, rw, rh]);
-			}
-			
-			else
-			{
-				UncoloredRects.push([
-					Math.floor(left),
-					Math.floor(top),
-					Math.ceil(width),
-					Math.ceil(height),
-				]);
-				
-				// if(height > cellSize)
-				// {
-				// 	ctx.strokeStyle = 'lch(80 80 0)';
-				// 	ctx.strokeRect(left, top, width, height);
-				// }
-				
-				// ctx.strokeRect(left, top + height, width, 1);
-				// ctx.strokeRect(left, top, 1, height);
-				// ctx.strokeRect(right - 1, top, 1, height);
-				// ctx.strokeRect(left, top, width, 1);
-				
-				// ctx.strokeStyle = 'lch(80 80 0)';
-				// ctx.strokeRect(0, top + height, canvas.width, 1);
-				// ctx.strokeRect(0, top, 1, height);
-				// ctx.strokeRect(right - 1, top, 1, height);
-				
-				// ctx.strokeStyle = 'lch(80 80 215)';
-				// ctx.strokeRect(0, top, canvas.width, 1);
-			}
-			
-			// Save metrics
-			data[char] = {
-				baseline,
-				width, halfWidth,
-				height, halfHeight,
-				top, bottom,
-				left, right,
-				
-				isColorized,
-				
-				textureX: x - textureSize/2,
-				textureY: 1 - ((y + cellSize/2) / textureSize/2),
-				
-				// Computed in another pass
-				leftGap: 0,
-				rightGap: 0,
-			};
-			
-			console.assert(metrics.width > 0, 'Glyph has no width', char, 'U+' + char.codePointAt(0).toString(16), metrics);
-		}
-		
-		// Pass to compute horizontal gaps between glyphs across the columns
-		const GAP_MARGIN = 3;
-		for(let a  = 0; a < columns; ++a)
-		{
-			for(let b = 0; b < rows; ++b)
-			{
-				let index = b + a * rows;
-				let char = characters[index];
-				if(!char) continue;
-				
-				let prevColumn = (columns + (a - 1)) % columns;
-				let prevChar = characters[b + prevColumn * rows];
-				let prevGap = columnWidth - GAP_MARGIN;
-				if(prevChar && data[prevChar]) prevGap -= data[prevChar].halfWidth;
-				
-				let nextColumn = (a + 1) % columns;
-				let nextChar = characters[b + nextColumn * rows];
-				let nextGap = columnWidth - GAP_MARGIN;
-				if(nextChar && data[nextChar]) nextGap -= data[nextChar].halfWidth;
-				
-				data[char].leftGap = prevGap;
-				data[char].rightGap = nextGap;
-			}
-		}
-		
-		
-		//*
-		// Force pixels around uncolored glyphs to white to prevent halo artifacts
-		let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-		for(let [rx, ry, rw, rh] of UncoloredRects)
-		{
-			let cx = rx - 4, cy = ry - 4;
-			let cw = rw + 6, ch = rh + 6;
-			for(let x = cx; x < cx+cw; ++x)
-			{
-				for(let y = cy; y < cy+ch; ++y)
+				if(font.meta.isFixedWidth)
 				{
-					if(rx <= x && x < rx+rw && ry <= y && y < ry+rh) continue;
-					let index = (x + y * imageData.width) * 4;
-					imageData.data[index + 0] = 255;
-					imageData.data[index + 1] = 255;
-					imageData.data[index + 2] = 255;
+					data.push(`"${character}" = "${[
+						metrics.textureIndex,
+						metrics.textureX,
+						metrics.textureY,
+					].join(',')}"`);
+				}
+				
+				else
+				{
+					data.push(`"${character}" = "${[
+						metrics.width,
+						metrics.leftGap,
+						metrics.rightGap,
+						metrics.textureIndex,
+						metrics.textureX,
+						metrics.textureY,
+					].join(',')}"`);
 				}
 			}
-		}
-		ctx.putImageData(imageData, 0, 0);
-		//*/
-		
-		// If this is the last canvas, then check if we can scale down the height to the closest of two
-		if(chIndex === Math.ceil(allCharacters.length / maxCharacters) - 1)
-		{
-			// Find the last used row
-			let lastRow = 0;
-			for(let i = 0; i < characters.length; ++i)
-			{
-				let b = Math.floor(i / columns);
-				if(b > lastRow) lastRow = b;
-			}
 			
-			// Crop canvas to ceiling of closest power of two height
-			let usedHeight = (lastRow + 1) * cellSize;
-			let croppedHeight = Math.pow(2, Math.ceil(Math.log2(usedHeight)));
-			if(croppedHeight < textureSize)
-			{
-				const croppedCanvas = document.createElement('canvas');
-				croppedCanvas.width = textureSize;
-				croppedCanvas.height = croppedHeight;
-				const croppedCtx = croppedCanvas.getContext('2d');
-				croppedCtx.drawImage(
-					canvas,
-					0, 0, canvas.width, croppedHeight,
-					0, 0, croppedCanvas.width, croppedCanvas.height
-				);
-				
-				// Replace canvas with cropped version
-				canvas.width = croppedCanvas.width;
-				canvas.height = croppedCanvas.height;
-				ctx.drawImage(croppedCanvas, 0, 0);
-			}
-		}
-		
-		// Store texture
-		textures.push(canvas);
-	}
+			return data.join(',\n\t\t');
+		}).join(',\n')
+	}}
 	
-	return {
-		textures,
-		data,
-		meta: {
-			name,
-			textureSize,
-			font,
-			columns,
-			rows,
-			characters: allCharacters,
-			isFixedWidth,
-		}
-	};
+	ll.LinksetDataWrite("NT5_Fonts", lljson.encode(textures))
+	for char, values in pairs(characters) do
+		ll.LinksetDataWrite(char, values)
+	end
+	`;
 }
-
-
-function TexturesPreview(props) {
-	const [sources, setSources] = useState([]);
-	useEffect(async () => {
-		let urls = [];
-		
-		if(props.data)
-		{
-			for(let texture of props.data.textures)
-			{
-				const blob = await new Promise(resolve => texture.toBlob(resolve));
-				const url = URL.createObjectURL(blob);
-				urls.push(url);
-			}
-		}
-		
-		if(sources) for(let url of sources) URL.revokeObjectURL(url);
-		setSources(urls);
-	}, [props.data]);
-	
-	if(!props.data) return <figure class="unicode-texture"></figure>;
-	
-	const { name, textureSize, font, columns, rows, characters, isFixedWidth } = props.data.meta;
-	
-	let textureInfo = null;
-	if(props.data.textures.length > 1)
-	{
-		// Check if last texture has a different height
-		const lastTexture = props.data.textures[props.data.textures.length - 1];
-		if(lastTexture.height < textureSize)
-		{
-			let plural = props.data.textures.length - 1 > 1 ? 's' : '';
-			if(plural) textureInfo = <>
-				{props.data.textures.length - 1} &times; {textureSize}&times;{textureSize} textures + {textureSize}&times;{lastTexture.height} texture<br/>
-			</>;
-			
-			else textureInfo = <>
-				{textureSize}&times;{textureSize} texture + {textureSize}&times;{lastTexture.height} texture<br/>
-			</>;
-		}
-		else textureInfo = <>{props.data.textures.length} &times; {textureSize}&times;{textureSize} textures<br/></>;
-	}
-	
-	else if(props.data.textures.length == 0);
-	
-	else textureInfo = <>{textureSize}&times;{props.data.textures[0].height} texture<br/></>;
-	
-	return (
-		<figure class="unicode-texture">
-			<figcaption>
-				{name}<br/>
-				{textureInfo}
-				{columns}&times;{rows} grid ({columns * rows} per){isFixedWidth ? ' (fixed width)' : ' (letter spacing)'}<br/>
-				font: <code>{font}</code><br/>
-				{characters.length} characters
-			</figcaption>
-			{sources.map(source => (
-				<div class="preview-container">
-					<img class="preview" src={source}/>
-					<a class="expand" href={source} target="_blank">
-						<svg class="icon"><use href="#icon-expand"/></svg>
-					</a>
-				</div>
-			))}
-		</figure>
-	);
-}
-
-
-
 
 function DownloadAsZip(props) {
 	const [download, setDownload] = useState(null);
@@ -426,10 +124,10 @@ function DownloadAsZip(props) {
 	// zip.end();
 	
 	useEffect(async () => {
-		if(!State.Textures.Common.value) return;
-		if(!State.Textures.Emojis.value) return;
+		// if(!State.Textures.Common.value) return;
+		// if(!State.Textures.Emojis.value) return;
 		// if(!State.Textures.CJK.value) return;
-		if(!State.SetupScript.value) return;
+		// if(!State.SetupScript.value) return;
 		
 		const zip = new Zip((err, data, final) => {
 			if(!err) console.log(data, final);
@@ -440,10 +138,10 @@ function DownloadAsZip(props) {
 		// textureCommonFile.push(textureCommonTGA, true);
 		
 	}, [
-		State.Textures.Common.value,
-		State.Textures.Emojis.value,
+		// State.Textures.Common.value,
+		// State.Textures.Emojis.value,
 		// State.Textures.CJK.value,
-		State.SetupScript.value,
+		// State.SetupScript.value,
 	]);
 	
 	
@@ -467,38 +165,420 @@ function DownloadAsZip(props) {
 	);
 }
 
-const State = {
-	// Datasets
-	Textures: {
-		Common: signal(null),
-		MultiLanguages: signal(null),
-		Emojis: signal(null),
-		MiscCJK: signal(null),
-		ChineseSimplified: signal(null),
-		ChineseTraditional: signal(null),
-		Japanese: signal(null),
-		Korean: signal(null),
-	},
-	SetupScript: signal(null),
-	
-	// Config
-	backColor: signal('transparent'),
-	textColor: signal('white'),
-};
 
-export default function Generator() {
-	/*
-		Generate:
-		- Textures
-			- Common
-			- Japanese
-			- Emojis
-			- etc
-		- Setup script
-		- Download as zip?
-	*/
+
+function TexturesPreview(props) {
+	const [sources, setSources] = useState([]);
+	const [isStillRendering, setRendering] = useState(false);
 	
 	useEffect(async () => {
+		if(props.font)
+		{
+			setRendering(true);
+			
+			let urls = [];
+			for(let index = 0; index < props.font.textures.length; ++index)
+			{
+				await props.font._renders[index]();
+				const texture = props.font.textures[index];
+				const blob = await new Promise(resolve => texture.toBlob(resolve));
+				const url = URL.createObjectURL(blob);
+				urls.push(url);
+				setSources(urls.slice());
+				await new Promise(r => requestAnimationFrame(r));
+			}
+			setRendering(false);
+		}
+		else setSources([]);
+	}, [props.font]);
+	
+	if(!props.font) return <figure class="unicode-texture"></figure>;
+	
+	const {
+		name,
+		fontFamily, fontSize,
+		render,
+		columns, rows,
+		cellSize,
+		characters,
+		textures,
+		_rendering,
+	} = props.font;
+	
+	// props.font.textures.length - 1} &times; {textureSize}&times;{textureSize} textures + {textureSize}&times;{lastTexture.height} texture<br/>
+	// {textureSize}&times;{textureSize} texture + {textureSize}&times;{lastTexture.height} texture<br/>
+	// else textureInfo = <>{props.font.textures.length} &times; {textureSize}&times;{textureSize} textures<br/></>;
+	// else textureInfo = <>{textureSize}&times;{props.font.textures[0].height} texture<br/></>;
+	
+	return (
+		<figure class={classNames("unicode-texture", { 'busy-rendering': isStillRendering })}>
+			<figcaption>
+				{name}<br/>
+				{columns}&times;{rows} grid, {Math.round(cellSize * 100)/100}px cells {render === 'fixed'? ' (fixed width)' : ' (letter spacing)'}<br/>
+				font: <code>{fontSize.toFixed(0)}px {fontFamily}</code><br/>
+				{characters.length} characters<br/>
+				{textures.length} textures
+				
+			</figcaption>
+			{sources.map(source => (
+				<div class="preview-container">
+					<img class="preview" src={source}/>
+					<a class="expand" href={source} target="_blank">
+						<svg class="icon"><use href="#icon-expand"/></svg>
+					</a>
+				</div>
+			))}
+			{isStillRendering && (<>
+				<div class="rendering-indicator">Rendering...</div>
+				<div class="busy-loader"/>
+			</>)}
+		</figure>
+	);
+}
+
+async function getFontSettings(fontFamily) {
+	const ctx = document.createElement('canvas').getContext('2d');
+	ctx.font = `400 ${FontBaseUnit}px ${fontFamily}, sans-serif`;
+	await document.fonts.load(ctx.font);
+	
+	const fontMetrics = ctx.measureText('a');
+	return {
+		fontBoundingBoxAscent: fontMetrics.fontBoundingBoxAscent,
+		fontBoundingBoxDescent: fontMetrics.fontBoundingBoxDescent,
+		fontBoundingBoxHeight: fontMetrics.fontBoundingBoxAscent + fontMetrics.fontBoundingBoxDescent,
+		baselinePercent: fontMetrics.fontBoundingBoxAscent / (fontMetrics.fontBoundingBoxAscent + fontMetrics.fontBoundingBoxDescent),
+		whitespace: {
+			'\u0020': Math.round(ctx.measureText('\u0020').width), // Space
+			'\u2002': Math.round(ctx.measureText('\u2002').width), // EN Space
+			'\u2003': Math.round(ctx.measureText('\u2003').width), // EM Space
+			'\u2004': Math.round(ctx.measureText('\u2004').width), // Three-per-EM Space
+			'\u2005': Math.round(ctx.measureText('\u2005').width), // Four-per-EM Space
+			'\u2006': Math.round(ctx.measureText('\u2006').width), // Six-per-EM Space
+			'\u2007': Math.round(ctx.measureText('\u2007').width), // Figure Space
+			'\u2008': Math.round(ctx.measureText('\u2008').width), // Punctuation Space
+			'\u2009': Math.round(ctx.measureText('\u2009').width), // Thin Space
+			'\u200A': Math.round(ctx.measureText('\u200A').width), // Hair Space
+		},
+	};
+}
+
+async function generateFontTextureSet(settings) {
+	const {
+		name,
+		fontFamily,
+		backColor,
+		textColor,
+		render,
+		columns,
+	} = settings;
+	let characters = settings.characters;
+	const textureSize = 2048;
+	
+	if(!(fontFamily in FontSettings)) FontSettings[fontFamily] = await getFontSettings(fontFamily);
+	const fontSettings = FontSettings[fontFamily];
+	
+	const cellSize = settings.cellSize || textureSize / columns;
+	const rows = textureSize / cellSize;
+	const columnWidth = textureSize / columns;
+	const data = {};
+	const maxCharacters = columns * rows;
+	const allCharacters = characters.slice();
+	const textures = [];
+	const textureCharacters = [];
+	const textureContexts = [];
+	
+	const fontSize = (cellSize / fontSettings.fontBoundingBoxHeight) * FontBaseUnit;
+	const font = `400 ${fontSize}px ${fontFamily}, sans-serif`;
+	
+	for(let canvasIndex = 0; canvasIndex < Math.ceil(allCharacters.length / maxCharacters); ++canvasIndex)
+	{
+		// Setup canvas
+		const canvas = document.createElement('canvas');
+		canvas.width = textureSize;
+		canvas.height = textureSize;
+		canvas.style.aspectRatio = `${textureSize} / ${textureSize}`;
+		const ctx = canvas.getContext('2d', { willReadFrequently: true });
+		
+		// If there is a back color we draw a background; Having a background allows the texture to be rendered softly with anti-aliasing
+		// Avoiding the current issues around alpha masking with legibility issues due to pixelated rendering
+		if(backColor !== 'transparent')
+		{
+			ctx.fillStyle = backColor;
+			ctx.fillRect(0, 0, textureSize, textureSize);
+		}
+		
+		// Font setup
+		ctx.fillStyle = textColor;
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'alphabetic';
+		ctx.font = font;
+		
+		textures.push(canvas);
+		textureCharacters[canvasIndex] = allCharacters.slice(canvasIndex * maxCharacters, (canvasIndex + 1) * maxCharacters);
+		textureContexts[canvasIndex] = ctx;
+	}
+	
+	const _renders = [];
+	async function renderTexture(canvas, ctx, characters) {
+		// await new Promise(r => requestAnimationFrame(r));
+		
+		let index = 0;
+		const UncoloredRects = [];
+		const ColorizedRects = [];
+		for(let character of characters)
+		{
+			let metrics = ctx.measureText(character);
+			
+			// Grid coordinates
+			let a = index % columns;
+			let b = Math.floor(index / columns);
+			index++;
+			let x = columnWidth * 0.5 + columnWidth * a;
+			let y = cellSize * b;
+			
+			// Crop to cell
+			ctx.save();
+			ctx.beginPath();
+			ctx.rect(x - columnWidth/2, y, columnWidth, cellSize);
+			ctx.clip();
+			
+			// Render glyph
+			y += cellSize * fontSettings.baselinePercent;
+			ctx.fillText(character, x, y);
+			
+			ctx.restore();
+			
+			// Save metrics
+			data[character] = {
+				width: metrics.width, 
+				
+				texture: canvas,
+				textureIndex: null, // Filled in later
+				textureX: x - textureSize/2,
+				textureY: 1 - ((y + cellSize/2) / textureSize/2),
+				
+				leftGap: 0,
+				rightGap: 0,
+			};
+			
+			
+			// Check if glyph is colorized/greyscale instead of black/white
+			let isColorized = false;
+			let rx = x - cellSize/2;
+			let ry = y - cellSize * fontSettings.baselinePercent;
+			let rw = cellSize;
+			let rh = cellSize;
+			
+			const imageData = ctx.getImageData(rx, ry, rw, rh);
+			let colorCount = 0;
+			let totalCount = 0;
+			for(let i = 0; i < imageData.data.length; i += 4)
+			{
+				const r = imageData.data[i + 0];
+				const g = imageData.data[i + 1];
+				const b = imageData.data[i + 2];
+				const a = imageData.data[i + 3];
+				if(a < 255) continue;
+				totalCount++;
+				if(r < 200) colorCount++;
+				else if(!(r === g && g === b)) colorCount++;
+			}
+			const colorRatio = colorCount / totalCount;
+			if(colorRatio > 0.1) isColorized = true;
+			
+			if(isColorized) ColorizedRects.push([ rx, ry, rw, rh ]);
+			else UncoloredRects.push([ rx, ry, rw, rh ]);
+		}
+		
+		const GAP_MARGIN = 2;
+		for(let a = 0; a < columns; ++a)
+		{
+			for(let b = 0; b < rows; ++b)
+			{
+				let index = b + a * rows;
+				let character = characters[index];
+				if(!character) continue;
+				
+				let prevColumn = (columns + (a - 1)) % columns;
+				let prevCharacter = characters[b + prevColumn * rows];
+				let prevGap = columnWidth - GAP_MARGIN;
+				if(prevCharacter && data[prevCharacter]) prevGap -= data[prevCharacter].width/2;
+				
+				let nextColumn = (a + 1) % columns;
+				let nextCharacter = characters[b + nextColumn * rows];
+				let nextGap = columnWidth - GAP_MARGIN;
+				if(nextCharacter && data[nextCharacter]) nextGap -= data[nextCharacter].width/2;
+				
+				data[character].leftGap = prevGap;
+				data[character].rightGap = nextGap;
+			}
+		}
+		
+		// await new Promise(r => requestAnimationFrame(r));
+		
+		// Crop height down to closest power of two
+		let lastRow = Math.floor((characters.length - 1) / columns);
+		let usedHeight = (lastRow + 1) * cellSize;
+		let croppedHeight = Math.pow(2, Math.ceil(Math.log2(usedHeight)));
+		if(croppedHeight < textureSize)
+		{
+			const croppedCanvas = document.createElement('canvas');
+			croppedCanvas.width = textureSize;
+			croppedCanvas.height = croppedHeight;
+			const croppedCtx = croppedCanvas.getContext('2d');
+			croppedCtx.drawImage(
+				canvas,
+				0, 0, canvas.width, croppedHeight,
+				0, 0, croppedCanvas.width, croppedCanvas.height
+			);
+			
+			// Replace canvas with cropped version
+			canvas.width = croppedCanvas.width;
+			canvas.height = croppedCanvas.height;
+			ctx.drawImage(croppedCanvas, 0, 0);
+		}
+		
+		// await new Promise(r => requestAnimationFrame(r));
+		
+		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+		
+		// Force pixels around uncolored glyphs to white to prevent halo artifacts
+		for(let [rx, ry, rw, rh] of UncoloredRects)
+		{
+			await new Promise(r => requestAnimationFrame(r));
+			
+			for(let x = rx; x < rx+rw; ++x)
+			{
+				for(let y = ry; y < ry+rh; ++y)
+				{
+					let index = (x + y * imageData.width) * 4;
+					imageData.data[index + 0] = 255;
+					imageData.data[index + 1] = 255;
+					imageData.data[index + 2] = 255;
+				}
+			}
+		}
+		
+		// await new Promise(r => requestAnimationFrame(r));
+		
+		// Force transparent pixels around glyphs to closest opaque pixel color to prevent halo artifacts
+		for(let [rx, ry, rw, rh] of ColorizedRects)
+		{
+			await new Promise(r => requestAnimationFrame(r));
+			
+			for(let x = rx; x < rx+rw - 1; ++x)
+			{
+				for(let y = ry; y < ry+rh - 1; ++y)
+				{
+					let index = (x + y * imageData.width) * 4;
+					const a = imageData.data[index + 3];
+					if(a > 0) continue;
+					
+					// Find closest opaque pixel
+					let found = false;
+					for(let radius = 1; radius < 3 && !found; ++radius)
+					{
+						for(let dx = -radius; dx <= radius && !found; ++dx)
+						{
+							for(let dy = -radius; dy <= radius && !found; ++dy)
+							{
+								if(dx == 0 && dy == 0) continue;
+								let sx = x + dx;
+								let sy = y + dy;
+								if(sx < 0 || sx >= canvas.width) continue;
+								if(sy < 0 || sy >= canvas.height) continue;
+								let sIndex = (sx + sy * imageData.width) * 4;
+								const sa = imageData.data[sIndex + 3];
+								if(sa === 255)
+								{
+									// Copy color
+									imageData.data[index + 0] = imageData.data[sIndex + 0];
+									imageData.data[index + 1] = imageData.data[sIndex + 1];
+									imageData.data[index + 2] = imageData.data[sIndex + 2];
+									found = true;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		ctx.putImageData(imageData, 0, 0);
+	}
+	
+	for(let index = 0; index < textures.length; ++index)
+	{
+		const texture = textures[index];
+		const ctx = textureContexts[index];
+		const characters = textureCharacters[index];
+		_renders.push(() => renderTexture(texture, ctx, characters));
+	}
+	
+	return {
+		name,
+		fontFamily, fontSize,
+		render,
+		columns, rows,
+		cellSize,
+		characters: allCharacters,
+		textures,
+		_renders,
+	};
+}
+
+
+
+const FontSettings = {};
+const FontBaseUnit = 1000; // We'll save all metrics relative to this base unit, which also represents 1 em square
+
+const State = {
+	Fonts: signal([]),
+}
+
+export default function Generator() {
+	useEffect(async () => {
+		let interSettings = {
+			name: 'Inter',
+			fontFamily: 'Inter',
+			backColor: 'transparent',
+			textColor: 'white',
+			render: 'propportional',
+			columns: 9,
+			cellSize: 2048/24,
+			characters: [
+				CharsetCommon,
+				CharsetMultiLanguages,
+			].flat(),
+		};
+		let emojiSettings = {
+			name: 'Emojis',
+			fontFamily: 'Noto Color Emoji',
+			backColor: 'transparent',
+			textColor: 'white',
+			render: 'fixed',
+			columns: 16,
+			characters: CharsetEmojis,
+		};
+		
+		let interFont = await generateFontTextureSet(interSettings);
+		let emojiFont = await generateFontTextureSet(emojiSettings);
+		
+		State.Fonts.value = [
+			interFont,
+			emojiFont,
+		];
+	}, [
+		// Config.fontFamily.value,
+		// Config.backColor.value,
+		// Config.textColor.value,
+	]);
+	
+	
+	
+	
+	
+		/*
 		const backColor = State.backColor.value;
 		const textColor = State.textColor.value;
 		State.Textures.Common.value = await generateUnicodeTexture({
@@ -534,7 +614,7 @@ export default function Generator() {
 			isFixedWidth: true,
 		};
 		State.Textures.MiscCJK.value = await generateUnicodeTexture(Object.assign({
-			name: 'CJK Misc/Punctuation',
+			name: 'CJKMisc',
 			characters: CharsetMiscCJK,
 			font: `400 64px 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP', 'Noto Sans KR', Inter, sans-serif`,
 		}, CJKSettings));
@@ -558,10 +638,11 @@ export default function Generator() {
 			characters: CharsetKorean,
 			font: `400 64px 'Noto Sans KR', Inter, sans-serif`,
 		}, CJKSettings));
-	}, [
-		State.backColor.value,
-		State.textColor.value,
-	]);
+		*/
+	// }, [
+	// 	State.backColor.value,
+	// 	State.textColor.value,
+	// ]);
 	
 	return (
 		<div class="page page-generator">
@@ -569,16 +650,11 @@ export default function Generator() {
 				<h1 class="title">Texture Generator</h1> — Work in Progress, no download option yet
 			</header>
 			<div class="textures">
-				<TexturesPreview data={State.Textures.Common.value}/>
-				<TexturesPreview data={State.Textures.MultiLanguages.value}/>
-				<TexturesPreview data={State.Textures.Emojis.value}/>
-				<TexturesPreview data={State.Textures.MiscCJK.value}/>
-				<TexturesPreview data={State.Textures.ChineseSimplified.value}/>
-				<TexturesPreview data={State.Textures.ChineseTraditional.value}/>
-				<TexturesPreview data={State.Textures.Japanese.value}/>
-				<TexturesPreview data={State.Textures.Korean.value}/>
+				{State.Fonts.value.map(font => (
+					<TexturesPreview font={font}/>
+				))}
 			</div>
-			<DownloadAsZip/>
+			{/* <DownloadAsZip/> */}
 		</div>
 	)
 }

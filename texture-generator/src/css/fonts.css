@@ -1,13 +1,13 @@
 @layer skeleton {
 	@font-face {
 		font-family: 'Inter';
-		src: url('./fonts/Inter-VariableFont_opsz,wght.ttf');
+		src: url('./fonts/Inter-Variable.ttf');
 	}
 	
 	@font-face {
 		font-family: 'Inter';
 		font-style: italic;
-		src: url('./fonts/Inter-Italic-VariableFont_opsz,wght.ttf');
+		src: url('./fonts/Inter-Variable-Italic.ttf');
 	}
 	
 	@font-face {

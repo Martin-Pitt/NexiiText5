@@ -182,6 +182,7 @@ export const CharsetMultiLanguages = parseCharset([
 	
 	// Indonesian
 	Range(0x20, 0x5F), Range(0x61, 0x7A), 0x7C, 0xA0, 0xA7, 0xA9, Range(0x2010, 0x2011), Range(0x2013, 0x2014), Range(0x2018, 0x2019), Range(0x201C, 0x201D), Range(0x2020, 0x2021), 0x2026, 0x2030, Range(0x2032, 0x2033), 0x20AC,
+	// ^ There's some combining codepoints here visible in the rener, so may have to drop the language or find a way to support them in the render such as zero width or something
 	
 	// Any other languages to add?
 	// Note to cluster similar writing scripts together in multi language that have a common root or shared characters.
