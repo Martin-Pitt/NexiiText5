@@ -19,58 +19,77 @@ import {
 
 function DownloadAsZip(props) {
 	const [download, setDownload] = useState(null);
-	
-	// https://github.com/101arrowz/fflate
-	// const zip = new Zip((err, data, final) => {
-	// 	if(!err) console.log(data, final);
-	// });
-	// const textureCommonFile = new ZipPassThrough('NT5_Texture_Common.tga');
-	// zip.add(textureCommonFile);
-	// textureCommonFile.push(tgaData, true);
-	// const setupFile = new AsyncZipDeflate('NT5_Setup.luau', { level: 9 });
-	// zip.add(setupFile);
-	// setupFile.push(new TextEncoder().encode(`-- NexiiText5 Setup Script`), true);
-	// zip.end();
+	const data = State.Data.value;
 	
 	useEffect(async () => {
-		// if(!State.Textures.Common.value) return;
-		// if(!State.Textures.Emojis.value) return;
-		// if(!State.Textures.CJK.value) return;
-		// if(!State.SetupScript.value) return;
+		if(!State.Fonts.Inter.value) return;
+		if(!State.Fonts.Emojis.value) return;
+		if(!data) return setDownload(null);
 		
-		const zip = new Zip((err, data, final) => {
-			if(!err) console.log(data, final);
+		await Promise.all([
+			...State.Fonts.Inter.value.texturesQueue,
+			...State.Fonts.Emojis.value.texturesQueue
+		]);
+		
+		const streams = [];
+		const zip = new Zip((err, chunk, final) => {
+			if(err) throw err;
+			
+			streams.push(chunk);
+			
+			if(final)
+			{
+				const blob = new Blob(streams, { type: 'application/octet-stream' });
+				const url = URL.createObjectURL(blob);
+				setDownload({
+					url,
+					filename: 'NT5_Textures.zip',
+				});
+			}
 		});
 		
-		// const textureCommonFile = new ZipPassThrough('NT5_Texture_Common.tga');
-		// zip.add(textureCommonFile);
-		// textureCommonFile.push(textureCommonTGA, true);
+		const dataFile = new AsyncZipDeflate('NT5_Data.luau', { level: 9 });
+		zip.add(dataFile);
+		dataFile.push(new TextEncoder().encode(generateSLuaFromData(data)), true);
 		
+		for(let font of [
+			State.Fonts.Inter.value,
+			State.Fonts.Emojis.value
+		]) {
+			for(let texture of font.textures)
+			{
+				const filename = `NT5_Texture_${font.name}_${font.textures.indexOf(texture)}.tga`;
+				const textureFile = new ZipPassThrough(filename);
+				zip.add(textureFile);
+				const tga = generateTGAfromCanvas(texture);
+				textureFile.push(new Uint8Array(tga.arrayBuffer), true);
+				
+				await new Promise(r => requestAnimationFrame(r));
+			}
+		}
+		
+		zip.end();
 	}, [
-		// State.Textures.Common.value,
-		// State.Textures.Emojis.value,
-		// State.Textures.CJK.value,
-		// State.SetupScript.value,
+		State.Fonts.Inter.value,
+		State.Fonts.Emojis.value,
+		data,
 	]);
 	
+	if(!download) return <div class="zip">
+		<div class="generating-indicator">Packing assets...</div>
+		<div class="packing-loader"/>
+	</div>;
 	
-	if(download) return (
-		<a
-			class="download"
-			href={download.url}
-			download={download.filename}
-		>
-			Download <span class="filename">{download.filename}</span>
-		</a>
-	);
-	
-	else return (
-		<a
-			class="download"
-			aria-disabled
-		>
-			Download …
-		</a>
+	return (
+		<div class="zip">
+			<a
+				class="download"
+				href={download.url}
+				download={download.filename}
+			>
+				Download <span class="filename">{download.filename}</span>
+			</a>
+		</div>
 	);
 }
 
@@ -186,47 +205,23 @@ function TexturesPreview(props) {
 function FontsData(props) {
 	const [dataURL, setDataURL] = useState(null);
 	const [sluaDataURL, setSLuaDataURL] = useState(null);
+	const data = State.Data.value;
 	
-	if(!props.data) return <div class="fonts-data">
+	if(!data) return <div class="fonts-data">
 		<div class="generating-indicator">Generating data...</div>
 		<div class="data-loader"/>
 	</div>;
 	
 	useEffect(async () => {
-		const json = JSON.stringify(props.data);
+		const json = JSON.stringify(data);
 		let blob = new Blob([json], { type: 'application/json' });
 		let link = URL.createObjectURL(blob);
 		setDataURL({ link, blob });
-		const code = `
-local Data = {
-	Fonts = {
-		${props.data.fonts.map(font => `{
-			name = "${font.name}",
-			type = "${font.type}",
-			columns = ${font.columns},
-			rows = ${font.rows},
-			cellSize = ${font.cellSize}
-		}`).join(',\n\t\t')}
-	},
-	Textures = {
-		${props.data.textures.map(texture => `{
-			uuid = uuid("${texture.uuid || '00000000-0000-0000-0000-000000000000'}"),
-			width = ${texture.width}, height = ${texture.height}
-		}`).join(',\n\t\t')}
-	},
-	Characters = {
-		${Object.entries(props.data.characters).map(([char, metrics]) => {
-			if(char === '"') char = '\\"';
-			else if(char === '\\') char = '\\\\';
-			return `["${char}"] = { ${metrics.join(', ')} }`;
-		}).join(',\n\t\t')}
-	},
-}
-`;
+		const code = generateSLuaFromData(data);
 		blob = new Blob([code], { type: 'application/text' });
 		link = URL.createObjectURL(blob);
 		setSLuaDataURL({ link, blob });
-	}, [props.data]);
+	}, [data]);
 	
 	return (
 		<div class="fonts-data">
@@ -595,6 +590,46 @@ async function dataFromFontTextureSets(fonts) {
 	return data;
 }
 
+function generateSLuaFromData(data) {
+	return `
+local Data = {
+	Fonts = {
+		${data.fonts.map(font => `{
+			name = "${font.name}",
+			type = "${font.type}",
+			columns = ${font.columns},
+			rows = ${font.rows},
+			cellSize = ${font.cellSize}
+		}`).join(',\n\t\t')}
+	},
+	Textures = {
+		${data.textures.map(texture => `{
+			uuid = uuid("${texture.uuid || '00000000-0000-0000-0000-000000000000'}"),
+			width = ${texture.width}, height = ${texture.height}
+		}`).join(',\n\t\t')}
+	},
+	Characters = {
+		${Object.entries(data.characters).map(([char, metrics]) => {
+			if(char === '"') char = '\\"';
+			else if(char === '\\') char = '\\\\';
+			return `["${char}"] = { ${metrics.join(', ')} }`;
+		}).join(',\n\t\t')}
+	},
+}
+`;
+}
+
+function generateTGAfromCanvas(canvas) {
+	const tga = new TGA({
+		width: canvas.width,
+		height: canvas.height,
+		imageType: TGA.Type.RLE_RGB,
+	});
+	
+	const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+	tga.setImageData(imageData);
+	return tga;
+}
 
 const FontSettings = {};
 const FontBaseUnit = 1000; // We'll save all metrics relative to this base unit, which also represents 1 em square
@@ -662,88 +697,18 @@ export default function Generator() {
 		State.Fonts.Emojis.value,
 	]);
 	
-	
-	
-	
-	
-		/*
-		const backColor = State.backColor.value;
-		const textColor = State.textColor.value;
-		State.Textures.Common.value = await generateUnicodeTexture({
-			name: 'Common',
-			characters: CharsetCommon,
-			backColor,
-			textColor,
-			cellSize: 2048/23,
-			columns: 8,
-			font: `400 ${((50/64)*(2048/23)).toFixed(3)}px Inter, sans-serif`,
-		});
-		State.Textures.MultiLanguages.value = await generateUnicodeTexture({
-			name: 'MultiLanguages',
-			characters: CharsetMultiLanguages,
-			backColor,
-			textColor,
-			cellSize: 64,
-			columns: 10,
-			font: `400 52px Inter, sans-serif`,
-		});
-		State.Textures.Emojis.value = await generateUnicodeTexture({
-			name: 'Emojis',
-			characters: CharsetEmojis,
-			backColor,
-			textColor,
-			cellSize: 128,
-			isFixedWidth: true,
-			font: `400 110px 'Noto Color Emoji', Inter, sans-serif`,
-		});
-		let CJKSettings = {
-			backColor,
-			textColor,
-			isFixedWidth: true,
-		};
-		State.Textures.MiscCJK.value = await generateUnicodeTexture(Object.assign({
-			name: 'CJKMisc',
-			characters: CharsetMiscCJK,
-			font: `400 64px 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP', 'Noto Sans KR', Inter, sans-serif`,
-		}, CJKSettings));
-		State.Textures.ChineseSimplified.value = await generateUnicodeTexture(Object.assign({
-			name: 'ChineseSimplified',
-			characters: CharsetChineseSimplified,
-			font: `400 64px 'Noto Sans SC', Inter, sans-serif`,
-		}, CJKSettings));
-		State.Textures.ChineseTraditional.value = await generateUnicodeTexture(Object.assign({
-			name: 'ChineseTraditional',
-			characters: CharsetChineseTraditional,
-			font: `400 64px 'Noto Sans TC', Inter, sans-serif`,
-		}, CJKSettings));
-		State.Textures.Japanese.value = await generateUnicodeTexture(Object.assign({
-			name: 'Japanese',
-			characters: CharsetJapanese,
-			font: `400 64px 'Noto Sans JP', Inter, sans-serif`,
-		}, CJKSettings));
-		State.Textures.Korean.value = await generateUnicodeTexture(Object.assign({
-			name: 'Korean',
-			characters: CharsetKorean,
-			font: `400 64px 'Noto Sans KR', Inter, sans-serif`,
-		}, CJKSettings));
-		*/
-	// }, [
-	// 	State.backColor.value,
-	// 	State.textColor.value,
-	// ]);
-	
 	return (
 		<div class="page page-generator">
 			<header>
-				<h1 class="title">Texture Generator</h1> — Work in Progress, no download option yet
+				<h1 class="title">Texture Generator</h1> — Work in Progress
 			</header>
 			<div class="assets">
 				{Object.values(State.Fonts).filter(font => font.value).map(font => (
 					<TexturesPreview font={font.value}/>
 				))}
-				<FontsData data={State.Data.value}/>
+				<FontsData/>
+				<DownloadAsZip/>
 			</div>
-			{/* <DownloadAsZip/> */}
 		</div>
 	)
 }
