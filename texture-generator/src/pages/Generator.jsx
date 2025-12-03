@@ -17,97 +17,6 @@ import {
 } from '../lib/characters.js';
 
 
-function generateSetupScript(fonts) {
-    // local textureIndex, glyphWidth, glyphLeftGap, glyphRightGap, textureX, textureY = table.unpack(lljson.decode(glyph) :: {number});
-	
-	
-	// Map all textures to indices
-	const textures = [];
-	for(let font of fonts)
-	{
-		textures.push(...font.textures);
-		
-		for(let character of font.meta.characters)
-		{
-			const metrics = font.data[character];
-			metrics.textureIndex = textures.indexOf(metrics.texture);
-		}
-	}
-	
-	return `-- Replace name with uploaded UUID textures respectively
-	local textures = {
-		${textures.map(texture => `{
-			"${texture.name}",
-			${texture.width},
-			${texture.height},
-		}`).join(',\n\t\t')}
-	}
-	
-	
-	local isFixedWidth = false
-	function saveMetrics(glyph: string, metrics: {})
-		local data = ""
-		if isFixedWidth then
-			data = table.concat({
-				metrics.textureIndex,
-				math.round(metrics.textureX * 8192),
-				math.round(metrics.textureY * 8192)
-			}, ",")
-		else
-			data = table.concat({
-				metrics.glyphWidth,
-				math.floor(metrics.glyphLeftGap),
-				math.floor(metrics.glyphRightGap),
-				metrics.textureIndex,
-				math.round(metrics.textureX * 8192),
-				math.round(metrics.textureY * 8192)
-			}, ",")
-		end
-		ll.LinksetDataWrite(glyph, data)
-	end
-	
-	local characters = {${
-		fonts.map(font => {
-			let data = [];
-			for(let character of font.meta.characters)
-			{
-				const metrics = font.data[character];
-				
-				if(character == '"') character = '\\"';
-				
-				if(font.meta.isFixedWidth)
-				{
-					data.push(`"${character}" = "${[
-						metrics.textureIndex,
-						metrics.textureX,
-						metrics.textureY,
-					].join(',')}"`);
-				}
-				
-				else
-				{
-					data.push(`"${character}" = "${[
-						metrics.width,
-						metrics.leftGap,
-						metrics.rightGap,
-						metrics.textureIndex,
-						metrics.textureX,
-						metrics.textureY,
-					].join(',')}"`);
-				}
-			}
-			
-			return data.join(',\n\t\t');
-		}).join(',\n')
-	}}
-	
-	ll.LinksetDataWrite("NT5_Fonts", lljson.encode(textures))
-	for char, values in pairs(characters) do
-		ll.LinksetDataWrite(char, values)
-	end
-	`;
-}
-
 function DownloadAsZip(props) {
 	const [download, setDownload] = useState(null);
 	
@@ -165,31 +74,71 @@ function DownloadAsZip(props) {
 	);
 }
 
-
-
 function TexturesPreview(props) {
 	const [sources, setSources] = useState([]);
 	const [isStillRendering, setRendering] = useState(false);
+	const [dataURL, setDataURL] = useState(null);
 	
 	useEffect(async () => {
-		if(props.font)
+		if(!props.font)
 		{
-			setRendering(true);
-			
-			let urls = [];
-			for(let index = 0; index < props.font.textures.length; ++index)
-			{
-				await props.font._renders[index]();
-				const texture = props.font.textures[index];
-				const blob = await new Promise(resolve => texture.toBlob(resolve));
-				const url = URL.createObjectURL(blob);
-				urls.push(url);
-				setSources(urls.slice());
-				await new Promise(r => requestAnimationFrame(r));
-			}
-			setRendering(false);
+			setSources([]);
+			setDataURL(null);
+			return;
 		}
-		else setSources([]);
+		
+		setRendering(true);
+		
+		let urls = [];
+		for(let index = 0; index < props.font.textures.length; ++index)
+		{
+			await props.font.texturesQueue[index];
+			const texture = props.font.textures[index];
+			let blob = await new Promise(resolve => texture.toBlob(resolve));
+			let link = URL.createObjectURL(blob);
+			urls.push(link);
+			setSources(urls.slice());
+			
+			let data = {
+				name: props.font.name,
+				type: props.font.type,
+				columns: props.font.columns,
+				rows: props.font.rows,
+				cellSize: props.font.cellSize,
+				textures: props.font.textures.map((tex, index) => ([
+					`<${props.font.name}.textures[${index}]>`,
+					tex.width,
+					tex.height,
+				])),
+				characters: {},
+			};
+			
+			for(let character of props.font.characters)
+			{
+				const metrics = props.font.data[character];
+				if(!metrics) continue;
+				
+				if(props.font.type === 'fixed') data.characters[character] = [
+					metrics.textureIndex,
+					metrics.index,
+				];
+				else data.characters[character] = [
+					metrics.textureIndex,
+					metrics.index,
+					metrics.width,
+					metrics.leftGap,
+					metrics.rightGap,
+				];
+			}
+			
+			const json = JSON.stringify(data);
+			blob = new Blob([json], { type: 'application/json' });
+			link = URL.createObjectURL(blob);
+			setDataURL({ link, blob });
+			
+			await new Promise(r => requestAnimationFrame(r));
+		}
+		setRendering(false);
 	}, [props.font]);
 	
 	if(!props.font) return <figure class="unicode-texture"></figure>;
@@ -197,28 +146,26 @@ function TexturesPreview(props) {
 	const {
 		name,
 		fontFamily, fontSize,
-		render,
+		type,
 		columns, rows,
 		cellSize,
 		characters,
 		textures,
-		_rendering,
 	} = props.font;
-	
-	// props.font.textures.length - 1} &times; {textureSize}&times;{textureSize} textures + {textureSize}&times;{lastTexture.height} texture<br/>
-	// {textureSize}&times;{textureSize} texture + {textureSize}&times;{lastTexture.height} texture<br/>
-	// else textureInfo = <>{props.font.textures.length} &times; {textureSize}&times;{textureSize} textures<br/></>;
-	// else textureInfo = <>{textureSize}&times;{props.font.textures[0].height} texture<br/></>;
 	
 	return (
 		<figure class={classNames("unicode-texture", { 'busy-rendering': isStillRendering })}>
 			<figcaption>
 				{name}<br/>
-				{columns}&times;{rows} grid, {Math.round(cellSize * 100)/100}px cells {render === 'fixed'? ' (fixed width)' : ' (letter spacing)'}<br/>
+				{columns}&times;{rows} grid, {Math.round(cellSize * 100)/100}px cells ({type})<br/>
 				font: <code>{fontSize.toFixed(0)}px {fontFamily}</code><br/>
 				{characters.length} characters<br/>
-				{textures.length} textures
-				
+				{textures.length} textures<br/>
+				{dataURL && (<>
+					<a href={dataURL.link} target="_blank" class="download-metrics">
+						{(dataURL.blob.size/1024).toFixed(2)}KB Data
+					</a>
+				</>)}
 			</figcaption>
 			{sources.map(source => (
 				<div class="preview-container">
@@ -230,9 +177,70 @@ function TexturesPreview(props) {
 			))}
 			{isStillRendering && (<>
 				<div class="rendering-indicator">Rendering...</div>
-				<div class="busy-loader"/>
+				<div class="texture-loader"/>
 			</>)}
 		</figure>
+	);
+}
+
+function FontsData(props) {
+	const [dataURL, setDataURL] = useState(null);
+	const [sluaDataURL, setSLuaDataURL] = useState(null);
+	
+	if(!props.data) return <div class="fonts-data">
+		<div class="generating-indicator">Generating data...</div>
+		<div class="data-loader"/>
+	</div>;
+	
+	useEffect(async () => {
+		const json = JSON.stringify(props.data);
+		let blob = new Blob([json], { type: 'application/json' });
+		let link = URL.createObjectURL(blob);
+		setDataURL({ link, blob });
+		const code = `
+local Data = {
+	Fonts = {
+		${props.data.fonts.map(font => `{
+			name = "${font.name}",
+			type = "${font.type}",
+			columns = ${font.columns},
+			rows = ${font.rows},
+			cellSize = ${font.cellSize}
+		}`).join(',\n\t\t')}
+	},
+	Textures = {
+		${props.data.textures.map(texture => `{
+			uuid = uuid("${texture.uuid || '00000000-0000-0000-0000-000000000000'}"),
+			width = ${texture.width}, height = ${texture.height}
+		}`).join(',\n\t\t')}
+	},
+	Characters = {
+		${Object.entries(props.data.characters).map(([char, metrics]) => {
+			if(char === '"') char = '\\"';
+			else if(char === '\\') char = '\\\\';
+			return `["${char}"] = { ${metrics.join(', ')} }`;
+		}).join(',\n\t\t')}
+	},
+}
+`;
+		blob = new Blob([code], { type: 'application/text' });
+		link = URL.createObjectURL(blob);
+		setSLuaDataURL({ link, blob });
+	}, [props.data]);
+	
+	return (
+		<div class="fonts-data">
+			{dataURL && (
+				<a href={dataURL.link} target="_blank" class="download-metrics">
+					{(dataURL.blob.size/1024).toFixed(2)}KB Data
+				</a>
+			)}
+			{sluaDataURL && (
+				<a href={sluaDataURL.link} target="_blank" class="download-metrics">
+					{(sluaDataURL.blob.size/1024).toFixed(2)}KB SLua Code
+				</a>
+			)}
+		</div>
 	);
 }
 
@@ -268,7 +276,7 @@ async function generateFontTextureSet(settings) {
 		fontFamily,
 		backColor,
 		textColor,
-		render,
+		type,
 		columns,
 	} = settings;
 	let characters = settings.characters;
@@ -289,6 +297,7 @@ async function generateFontTextureSet(settings) {
 	
 	const fontSize = (cellSize / fontSettings.fontBoundingBoxHeight) * FontBaseUnit;
 	const font = `400 ${fontSize}px ${fontFamily}, sans-serif`;
+	const fontBase = `400 ${FontBaseUnit}px ${fontFamily}, sans-serif`;
 	
 	for(let canvasIndex = 0; canvasIndex < Math.ceil(allCharacters.length / maxCharacters); ++canvasIndex)
 	{
@@ -318,21 +327,18 @@ async function generateFontTextureSet(settings) {
 		textureContexts[canvasIndex] = ctx;
 	}
 	
-	const _renders = [];
 	async function renderTexture(canvas, ctx, characters) {
 		// await new Promise(r => requestAnimationFrame(r));
 		
-		let index = 0;
+		let index = -1;
 		const UncoloredRects = [];
 		const ColorizedRects = [];
 		for(let character of characters)
 		{
-			let metrics = ctx.measureText(character);
-			
 			// Grid coordinates
+			index++;
 			let a = index % columns;
 			let b = Math.floor(index / columns);
-			index++;
 			let x = columnWidth * 0.5 + columnWidth * a;
 			let y = cellSize * b;
 			
@@ -348,15 +354,15 @@ async function generateFontTextureSet(settings) {
 			
 			ctx.restore();
 			
+			
 			// Save metrics
+			ctx.font = fontBase;
+			let metrics = ctx.measureText(character);
+			ctx.font = font;
 			data[character] = {
-				width: metrics.width, 
-				
 				texture: canvas,
-				textureIndex: null, // Filled in later
-				textureX: x - textureSize/2,
-				textureY: 1 - ((y + cellSize/2) / textureSize/2),
-				
+				index,
+				width: metrics.width, 
 				leftGap: 0,
 				rightGap: 0,
 			};
@@ -395,22 +401,23 @@ async function generateFontTextureSet(settings) {
 		{
 			for(let b = 0; b < rows; ++b)
 			{
-				let index = b + a * rows;
+				let index = a + b * columns;
+				if(index >= characters.length) continue;
 				let character = characters[index];
-				if(!character) continue;
 				
 				let prevColumn = (columns + (a - 1)) % columns;
-				let prevCharacter = characters[b + prevColumn * rows];
-				let prevGap = columnWidth - GAP_MARGIN;
+				let prevCharacter = characters[prevColumn + b * columns];
+				let prevGap = ((columnWidth - GAP_MARGIN) / fontSize) * FontBaseUnit;
 				if(prevCharacter && data[prevCharacter]) prevGap -= data[prevCharacter].width/2;
 				
 				let nextColumn = (a + 1) % columns;
-				let nextCharacter = characters[b + nextColumn * rows];
-				let nextGap = columnWidth - GAP_MARGIN;
+				let nextCharacter = characters[nextColumn + b * columns];
+				let nextGap = ((columnWidth - GAP_MARGIN) / fontSize) * FontBaseUnit;
 				if(nextCharacter && data[nextCharacter]) nextGap -= data[nextCharacter].width/2;
 				
-				data[character].leftGap = prevGap;
-				data[character].rightGap = nextGap;
+				data[character].width = Math.floor(data[character].width);
+				data[character].leftGap = Math.floor(prevGap);
+				data[character].rightGap = Math.floor(nextGap);
 			}
 		}
 		
@@ -507,71 +514,152 @@ async function generateFontTextureSet(settings) {
 		ctx.putImageData(imageData, 0, 0);
 	}
 	
+	const texturesQueue = [];
+	const _renderTextureChain = [];
 	for(let index = 0; index < textures.length; ++index)
 	{
 		const texture = textures[index];
 		const ctx = textureContexts[index];
 		const characters = textureCharacters[index];
-		_renders.push(() => renderTexture(texture, ctx, characters));
+		_renderTextureChain.push(() => renderTexture(texture, ctx, characters));
 	}
+	
+	_renderTextureChain.reduce((p, f) => {
+		let step = p.then(f);
+		texturesQueue.push(step);
+		return step;
+	}, Promise.resolve());
 	
 	return {
 		name,
 		fontFamily, fontSize,
-		render,
+		type,
 		columns, rows,
 		cellSize,
 		characters: allCharacters,
 		textures,
-		_renders,
+		texturesQueue,
+		data,
 	};
 }
 
+async function dataFromFontTextureSets(fonts) {
+	let data = {
+		fonts: [],
+		textures: [],
+		characters: {}
+	};
+	let textures = [];
+	
+	for(let font of fonts)
+	{
+		const fontIndex = data.fonts.length;
+		data.fonts.push({
+			name: font.name,
+			type: font.type,
+			columns: font.columns,
+			rows: font.rows,
+			cellSize: font.cellSize,
+		});
+		
+		for(let texture of font.textures)
+		{
+			data.textures.push({
+				uuid: '',
+				width: texture.width,
+				height: texture.height,
+			});
+			textures.push(texture);
+		}
+		
+		for(let character of font.characters)
+		{
+			const metrics = font.data[character];
+			const textureIndex = textures.indexOf(metrics.texture);
+			if(font.type === 'fixed') data.characters[character] = [
+				fontIndex,
+				textureIndex,
+				metrics.index,
+			];
+			else data.characters[character] = [
+				fontIndex,
+				textureIndex,
+				metrics.index,
+				metrics.width,
+				metrics.leftGap,
+				metrics.rightGap,
+			];
+		}
+	}
+	
+	return data;
+}
 
 
 const FontSettings = {};
 const FontBaseUnit = 1000; // We'll save all metrics relative to this base unit, which also represents 1 em square
 
+
+
 const State = {
-	Fonts: signal([]),
-}
+	InterSettings: signal({
+		name: 'Inter',
+		fontFamily: 'Inter',
+		backColor: 'transparent',
+		textColor: 'white',
+		type: 'proportional',
+		columns: 9,
+		cellSize: 2048/24,
+	}),
+	EmojiSettings: signal({
+		name: 'Emojis',
+		fontFamily: 'Noto Color Emoji',
+		backColor: 'transparent',
+		textColor: 'white',
+		type: 'fixed',
+		columns: 16,
+	}),
+	
+	Fonts: {
+		Inter: signal(null),
+		Emojis: signal(null),
+	},
+	Data: signal(null),
+};
 
 export default function Generator() {
 	useEffect(async () => {
-		let interSettings = {
-			name: 'Inter',
-			fontFamily: 'Inter',
-			backColor: 'transparent',
-			textColor: 'white',
-			render: 'propportional',
-			columns: 9,
-			cellSize: 2048/24,
-			characters: [
-				CharsetCommon,
-				CharsetMultiLanguages,
-			].flat(),
-		};
-		let emojiSettings = {
-			name: 'Emojis',
-			fontFamily: 'Noto Color Emoji',
-			backColor: 'transparent',
-			textColor: 'white',
-			render: 'fixed',
-			columns: 16,
-			characters: CharsetEmojis,
-		};
+		State.Fonts.Inter.value = await generateFontTextureSet(
+			Object.assign({}, State.InterSettings.value, {
+				characters: [CharsetCommon, CharsetMultiLanguages].flat(),
+			})
+		);
+	}, [State.InterSettings.value]);
+	
+	useEffect(async () => {
+		State.Fonts.Emojis.value = await generateFontTextureSet(
+			Object.assign({}, State.EmojiSettings.value, {
+				characters: CharsetEmojis,
+			})
+		);
+	}, [State.EmojiSettings.value]);
+	
+	useEffect(async () => {
+		if(!State.Fonts.Inter.value) return;
+		if(!State.Fonts.Emojis.value) return;
 		
-		let interFont = await generateFontTextureSet(interSettings);
-		let emojiFont = await generateFontTextureSet(emojiSettings);
-		
-		State.Fonts.value = [
-			interFont,
-			emojiFont,
-		];
+		Promise.all([
+			...State.Fonts.Inter.value.texturesQueue,
+			...State.Fonts.Emojis.value.texturesQueue
+		]).then(async () => {
+			State.Data.value = await dataFromFontTextureSets([
+				State.Fonts.Inter.value,
+				State.Fonts.Emojis.value
+			]);
+		});
 	}, [
-		// Config.fontFamily.value,
-		// Config.backColor.value,
-		// Config.textColor.value,
+		State.Fonts.Inter.value,
+		State.Fonts.Emojis.value,
 	]);
 	
 	
@@ -649,10 +737,11 @@ export default function Generator() {
 			<header>
 				<h1 class="title">Texture Generator</h1> — Work in Progress, no download option yet
 			</header>
-			<div class="textures">
-				{State.Fonts.value.map(font => (
-					<TexturesPreview font={font}/>
+			<div class="assets">
+				{Object.values(State.Fonts).filter(font => font.value).map(font => (
+					<TexturesPreview font={font.value}/>
 				))}
+				<FontsData data={State.Data.value}/>
 			</div>
 			{/* <DownloadAsZip/> */}
 		</div>

@@ -3,9 +3,8 @@
 	100% { background-position: 30px 30px; }
 }
 
-
 /* Loader from: https://css-loaders.com/factory/ */
-.busy-loader {
+.texture-loader {
 	width: 300px;
 	height: 14px;
 	/* box-shadow: 0 3px 0 #fff; */
@@ -20,11 +19,11 @@
 		background: var(--g),var(--g),var(--g),var(--g);
 		background-size: 16px 14px;
 		animation:
-			busy-loader-boxes 2s infinite linear,
-			busy-loader-move 2s infinite linear;
+			texture-loader-boxes 2s infinite linear,
+			texture-loader-move 2s infinite linear;
 	}
 }
-@keyframes busy-loader-boxes {
+@keyframes texture-loader-boxes {
 	0%,
 	100%  {background-position: 0 -50px,100% -50px}
 	17.5% {background-position: 0 100%,100% -50px,0 -50px,100% -50px}
@@ -33,9 +32,41 @@
 	70%,
 	98%  {background-position: 0 100%,100% 100% ,0 calc(100% - 16px),100% calc(100% - 16px)}
 }
-@keyframes busy-loader-move {
+@keyframes texture-loader-move {
 	0%,70% {transform:translate(0)}
 	100%  {transform:translate(180px)}
+}
+
+.data-loader {
+	width: 90px;
+	height: 14px;
+	box-shadow: 0 3px 0 #fff;
+	position: relative;
+	display: grid;
+	clip-path: inset(-60px 0 -5px)
+}
+.data-loader:after {
+	content: "";
+	position: relative;
+	background: repeating-linear-gradient(90deg,#0000 0 calc(50% - 8px), #ccc 0 calc(50% + 8px), #0000 0 100%) 0 0/calc(100%/3) 100%;
+	animation: data-loader-move 1s infinite;
+} 
+.data-loader:before {
+	content: "";
+	position: absolute;
+	width: 14px;
+	aspect-ratio: 1;
+	left: calc(50% - 7px);
+	bottom: 0;
+	border-radius: 50%;
+	background: lightblue;
+	animation: data-loader-drop 1s infinite;
+}
+@keyframes data-loader-move {
+	50%,100% {background-position: calc(100%/2) 0}
+}
+@keyframes data-loader-drop {
+	0%,50% {transform:translateY(-80px)}
 }
 
 
@@ -52,11 +83,8 @@
 		font-weight: 400;
 	}
 	
-	.textures {
+	.assets {
 		display: grid;
-		/* grid-template-columns: repeat(auto-fit, 300px); */
-		/* justify-content: center; */
-		/* align-items: start; */
 		justify-items: start;
 		gap: 20px;
 		margin-top: 20px;
@@ -68,7 +96,6 @@
 		grid-auto-flow: column;
 		grid-template-columns: repeat(auto-fill, 300px);
 		grid-gap: 10px;
-		/* height: 300px; */
 		border-radius: 8px;
 		background-color: oklch(50% 0 0 / 0.1);
 		
@@ -99,6 +126,10 @@
 			line-height: 1.4;
 		}
 		.meta {}
+		
+		.download-metrics {
+			color: inherit;
+		}
 		
 		&:empty {
 			display: grid;
@@ -136,10 +167,23 @@
 		}
 		
 		&.busy-rendering {}
-		.busy-loader {
+		.texture-loader {
 			position: absolute;
 			left: 0px;
 			bottom: 20px;
+		}
+	}
+	
+	.fonts-data {
+		position: relative;
+		display: grid;
+		grid-gap: 10px;
+		border-radius: 8px;
+		background-color: oklch(50% 0 0 / 0.1);
+		padding: 20px;
+		
+		.download-metrics {
+			color: oklch(90% 0.1 90);
 		}
 	}
 	
