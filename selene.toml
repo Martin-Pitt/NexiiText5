@@ -1,4 +1,4 @@
-std = "luau+.vscode/sl-vscode-plugin/slua_default"
+std = "roblox+d:\\Second Life\\LSL\\.vscode\\sl-vscode-plugin\\slua_default"
 
 [rules]
 multiple_statements = "allow"
