@@ -645,7 +645,7 @@ function generateNotecardFromData(data) {
 			}
 		)).map(item => 'Texture' + JSON.stringify(item)),
 		...Object.entries(data.characters).map(([char, metrics]) => (
-			char + String.fromCodePoint(0x0001) + metrics.join(String.fromCodePoint(0x0002))
+			char + String.fromCodePoint(0xE000) + metrics.join(String.fromCodePoint(0xE001))
 		)),
 	].join('\n');
 }
