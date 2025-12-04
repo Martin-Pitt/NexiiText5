@@ -246,7 +246,7 @@ function FontsData(props) {
 	);
 }
 
-async function getFontSettings(fontFamily) {
+async function getFontMetrics(fontFamily) {
 	const ctx = document.createElement('canvas').getContext('2d');
 	ctx.font = `400 ${FontBaseUnit}px ${fontFamily}, sans-serif`;
 	await document.fonts.load(ctx.font);
@@ -284,8 +284,8 @@ async function generateFontTextureSet(settings) {
 	let characters = settings.characters;
 	const textureSize = 2048;
 	
-	if(!(fontFamily in FontSettings)) FontSettings[fontFamily] = await getFontSettings(fontFamily);
-	const fontSettings = FontSettings[fontFamily];
+	if(!(fontFamily in FontMetrics)) FontMetrics[fontFamily] = await getFontMetrics(fontFamily);
+	const fontMetrics = FontMetrics[fontFamily];
 	
 	const cellSize = settings.cellSize || textureSize / columns;
 	const rows = textureSize / cellSize;
@@ -297,7 +297,7 @@ async function generateFontTextureSet(settings) {
 	const textureCharacters = [];
 	const textureContexts = [];
 	
-	const fontSize = (cellSize / fontSettings.fontBoundingBoxHeight) * FontBaseUnit;
+	const fontSize = (cellSize / fontMetrics.fontBoundingBoxHeight) * FontBaseUnit;
 	const font = `400 ${fontSize}px ${fontFamily}, sans-serif`;
 	const fontBase = `400 ${FontBaseUnit}px ${fontFamily}, sans-serif`;
 	
@@ -351,7 +351,7 @@ async function generateFontTextureSet(settings) {
 			ctx.clip();
 			
 			// Render glyph
-			y += cellSize * fontSettings.baselinePercent;
+			y += cellSize * fontMetrics.baselinePercent;
 			ctx.fillText(character, x, y);
 			
 			ctx.restore();
@@ -373,7 +373,7 @@ async function generateFontTextureSet(settings) {
 			// Check if glyph is colorized/greyscale instead of black/white
 			let isColorized = false;
 			let rx = x - cellSize/2;
-			let ry = y - cellSize * fontSettings.baselinePercent;
+			let ry = y - cellSize * fontMetrics.baselinePercent;
 			let rw = cellSize;
 			let rh = cellSize;
 			
@@ -556,13 +556,20 @@ async function dataFromFontTextureSets(fonts) {
 	for(let font of fonts)
 	{
 		const fontIndex = data.fonts.length;
-		data.fonts.push({
+		const fontData = {
 			name: font.name,
 			type: font.type,
 			columns: font.columns,
 			rows: font.rows,
 			cellSize: font.cellSize,
-		});
+		};
+		
+		if(font.type === 'proportional')
+		{
+			fontData.whitespace = FontMetrics[font.fontFamily].whitespace;
+		}
+		
+		data.fonts.push(fontData);
 		
 		for(let texture of font.textures)
 		{
@@ -628,22 +635,8 @@ local Data = {
 
 function generateNotecardFromData(data) {
 	return [
-		...data.fonts.map((font, index) => (
-			{
-				name: font.name,
-				type: font.type,
-				columns: font.columns,
-				rows: font.rows,
-				cellSize: font.cellSize,
-			}
-		)).map(item => 'Font' + JSON.stringify(item)),
-		...data.textures.map((texture, index) => (
-			{
-				uuid: texture.uuiod || '00000000-0000-0000-0000-000000000000',
-				width: texture.width,
-				height: texture.height,
-			}
-		)).map(item => 'Texture' + JSON.stringify(item)),
+		...data.fonts.map(item => 'Font' + JSON.stringify(item)),
+		...data.textures.map(item => 'Texture' + JSON.stringify(item)),
 		...Object.entries(data.characters).map(([char, metrics]) => (
 			char + String.fromCodePoint(0xE000) + metrics.join(String.fromCodePoint(0xE001))
 		)),
@@ -662,7 +655,7 @@ function generateTGAfromCanvas(canvas) {
 	return tga;
 }
 
-const FontSettings = {};
+const FontMetrics = {};
 const FontBaseUnit = 1000; // We'll save all metrics relative to this base unit, which also represents 1 em square
 
 
