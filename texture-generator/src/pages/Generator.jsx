@@ -48,9 +48,16 @@ function DownloadAsZip(props) {
 			}
 		});
 		
+		/*
 		const dataFile = new AsyncZipDeflate('NT5_Data.luau', { level: 9 });
 		zip.add(dataFile);
 		dataFile.push(new TextEncoder().encode(generateSLuaFromData(data)), true);
+		*/
+		
+		const dataFile = new AsyncZipDeflate('NT5_Data.txt', { level: 9 });
+		zip.add(dataFile);
+		dataFile.push(new TextEncoder().encode(generateNotecardFromData(data)), true);
+		
 		
 		for(let font of [
 			State.Fonts.Inter.value,
@@ -617,6 +624,30 @@ local Data = {
 	},
 }
 `;
+}
+
+function generateNotecardFromData(data) {
+	return [
+		...data.fonts.map((font, index) => (
+			{
+				name: font.name,
+				type: font.type,
+				columns: font.columns,
+				rows: font.rows,
+				cellSize: font.cellSize,
+			}
+		)).map(item => 'Font' + JSON.stringify(item)),
+		...data.textures.map((texture, index) => (
+			{
+				uuid: texture.uuiod || '00000000-0000-0000-0000-000000000000',
+				width: texture.width,
+				height: texture.height,
+			}
+		)).map(item => 'Texture' + JSON.stringify(item)),
+		...Object.entries(data.characters).map(([char, metrics]) => (
+			char + String.fromCodePoint(0x0001) + metrics.join(String.fromCodePoint(0x0002))
+		)),
+	].join('\n');
 }
 
 function generateTGAfromCanvas(canvas) {
