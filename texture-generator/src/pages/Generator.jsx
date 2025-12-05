@@ -145,11 +145,13 @@ function TexturesPreview(props) {
 				if(!metrics) continue;
 				
 				if(props.font.type === 'fixed') data.characters[character] = [
-					metrics.textureIndex,
+					props.fontIndex,
+					1 + props.font.textures.indexOf(metrics.texture),
 					metrics.index,
 				];
 				else data.characters[character] = [
-					metrics.textureIndex,
+					props.fontIndex,
+					1 + props.font.textures.indexOf(metrics.texture),
 					metrics.index,
 					metrics.width,
 					metrics.leftGap,
@@ -363,7 +365,7 @@ async function generateFontTextureSet(settings) {
 			ctx.font = font;
 			data[character] = {
 				texture: canvas,
-				index,
+				index: 1 + index,
 				width: metrics.width, 
 				leftGap: 0,
 				rightGap: 0,
@@ -555,7 +557,7 @@ async function dataFromFontTextureSets(fonts) {
 	
 	for(let font of fonts)
 	{
-		const fontIndex = data.fonts.length;
+		const fontIndex = 1 + data.fonts.length;
 		const fontData = {
 			name: font.name,
 			type: font.type,
@@ -584,16 +586,16 @@ async function dataFromFontTextureSets(fonts) {
 		for(let character of font.characters)
 		{
 			const metrics = font.data[character];
-			const textureIndex = textures.indexOf(metrics.texture);
+			const textureIndex = 1 + textures.indexOf(metrics.texture);
 			if(font.type === 'fixed') data.characters[character] = [
-				1 + fontIndex,
-				1 + textureIndex,
-				1 + metrics.index,
+				fontIndex,
+				textureIndex,
+				metrics.index,
 			];
 			else data.characters[character] = [
-				1 + fontIndex,
-				1 + textureIndex,
-				1 + metrics.index,
+				fontIndex,
+				textureIndex,
+				metrics.index,
 				metrics.width,
 				metrics.leftGap,
 				metrics.rightGap,
@@ -638,7 +640,7 @@ function generateNotecardFromData(data) {
 		...data.fonts.map(item => 'Font' + JSON.stringify(item)),
 		...data.textures.map(item => 'Texture' + JSON.stringify(item)),
 		...Object.entries(data.characters).map(([char, metrics]) => (
-			char + String.fromCodePoint(0xE000) + metrics.join(String.fromCodePoint(0xE001))
+			char + String.fromCodePoint(0xE000) + metrics.join(',')
 		)),
 	].join('\n');
 }
@@ -727,8 +729,8 @@ export default function Generator() {
 				<h1 class="title">Texture Generator</h1> — Work in Progress
 			</header>
 			<div class="assets">
-				{Object.values(State.Fonts).filter(font => font.value).map(font => (
-					<TexturesPreview font={font.value}/>
+				{Object.values(State.Fonts).filter(font => font.value).map((font, index) => (
+					<TexturesPreview fontIndex={1 + index} font={font.value}/>
 				))}
 				<FontsData/>
 				<DownloadAsZip/>
