@@ -586,14 +586,14 @@ async function dataFromFontTextureSets(fonts) {
 			const metrics = font.data[character];
 			const textureIndex = textures.indexOf(metrics.texture);
 			if(font.type === 'fixed') data.characters[character] = [
-				fontIndex,
-				textureIndex,
-				metrics.index,
+				1 + fontIndex,
+				1 + textureIndex,
+				1 + metrics.index,
 			];
 			else data.characters[character] = [
-				fontIndex,
-				textureIndex,
-				metrics.index,
+				1 + fontIndex,
+				1 + textureIndex,
+				1 + metrics.index,
 				metrics.width,
 				metrics.leftGap,
 				metrics.rightGap,
