@@ -568,6 +568,49 @@ async function generateFontTextureSet(settings) {
 			}
 		}
 		
+		// Loop through each colourized rect and fill in fully transparent pixels with the closest opaque pixel
+		for(let [rx, ry, rw, rh] of UncoloredRects)
+		{
+			await new Promise(r => requestAnimationFrame(r));
+			
+			// Spiral out from current pixel to find closest opaque pixel for each transparent pixel
+			for(let x = rx; x < rx+rw; ++x)
+			{
+				for(let y = ry; y < ry+rh; ++y)
+				{
+					let index = (x + y * imageData.width) * 4;
+					if(imageData.data[index + 3] === 0)
+					{
+						// Find closest opaque pixel by spiral search from current position
+						let closestColor = null;
+						for(let radius = 1; radius < 2; ++radius) {
+							for(let dx = -radius; dx <= radius; ++dx) {
+								for(let dy = -radius; dy <= radius; ++dy) {
+									if(Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+									const px = x + dx;
+									const py = y + dy;
+									if(px < 0 || px >= imageData.width || py < 0 || py >= imageData.height) continue;
+									const ci = (px + py * imageData.width) * 4;
+									if(imageData.data[ci + 3] === 255) {
+										closestColor = [imageData.data[ci], imageData.data[ci + 1], imageData.data[ci + 2]];
+										break;
+									}
+								}
+								if(closestColor) break;
+							}
+							if(closestColor) break;
+						}
+						if(closestColor) {
+							imageData.data[index] = closestColor[0];
+							imageData.data[index + 1] = closestColor[1];
+							imageData.data[index + 2] = closestColor[2];
+							imageData.data[index + 3] = 1;
+						}
+					}
+				}
+			}
+		}
+		
 		// Force any pixels that are black transparent to white transparent
 		for(let i = 0; i < imageData.data.length; i += 4)
 		{
