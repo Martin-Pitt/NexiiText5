@@ -592,6 +592,7 @@ async function dataFromFontTextureSets(fonts) {
 			columns: font.columns,
 			rows: font.rows,
 			cellSize: font.cellSize,
+			fontSize: font.fontSize,
 		};
 		
 		if(font.type === 'proportional')
