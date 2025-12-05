@@ -331,6 +331,33 @@ async function generateFontTextureSet(settings) {
 		textureContexts[canvasIndex] = ctx;
 	}
 	
+	// If characters contain alphabetic characters then lets compute kerning as well
+	if(allCharacters.some(c => /[a-zA-Z]/.test(c)))
+	{
+		const ctx = document.createElement('canvas').getContext('2d');
+		ctx.font = font;
+		await document.fonts.load(ctx.font);
+		
+		const kerning = {};
+		// Compute kerning pairs only between the alphabetic characters
+		const alphabeticChars = allCharacters.filter(c => /[a-zA-Z]/.test(c));
+		for(let firstChar of alphabeticChars)
+		{
+			for(let secondChar of alphabeticChars)
+			{
+				const pair = firstChar + secondChar;
+				const widthFirst = ctx.measureText(firstChar).width;
+				const widthSecond = ctx.measureText(secondChar).width;
+				const widthPair = ctx.measureText(pair).width;
+				const kernValue = widthPair - (widthFirst + widthSecond);
+				if(kernValue !== 0) kerning[pair] = Math.round((kernValue / fontSize) * FontBaseUnit);
+			}
+		}
+		
+		FontMetrics[fontFamily].kerning = kerning;
+		console.log(kerning);
+	}
+	
 	async function renderTexture(canvas, ctx, characters) {
 		// await new Promise(r => requestAnimationFrame(r));
 		
@@ -369,6 +396,8 @@ async function generateFontTextureSet(settings) {
 				width: metrics.width, 
 				leftGap: 0,
 				rightGap: 0,
+				textureX: x - textureSize/2,
+				textureY: 1 - ((y + cellSize/2) / textureSize/2),
 			};
 			
 			
@@ -569,6 +598,7 @@ async function dataFromFontTextureSets(fonts) {
 		if(font.type === 'proportional')
 		{
 			fontData.whitespace = FontMetrics[font.fontFamily].whitespace;
+			if(FontMetrics[font.fontFamily].kerning) fontData.kerning = FontMetrics[font.fontFamily].kerning;
 		}
 		
 		data.fonts.push(fontData);
@@ -579,6 +609,7 @@ async function dataFromFontTextureSets(fonts) {
 				uuid: '',
 				width: texture.width,
 				height: texture.height,
+				font: fontIndex,
 			});
 			textures.push(texture);
 		}
