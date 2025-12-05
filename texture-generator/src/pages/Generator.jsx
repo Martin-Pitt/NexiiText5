@@ -58,17 +58,28 @@ function DownloadAsZip(props) {
 		zip.add(dataFile);
 		dataFile.push(new TextEncoder().encode(generateNotecardFromData(data)), true);
 		
-		
 		for(let font of [
 			State.Fonts.Inter.value,
 			State.Fonts.Emojis.value
 		]) {
-			for(let texture of font.textures)
+			let images = font.texturesChain;
+			for(let iter = 0; iter < images.length; ++iter) images[iter] = await images[iter]();
+			
+			for(let iter = 0; iter < font.textures.length; ++iter)
 			{
+				const texture = font.textures[iter];
+				const image = images[iter];
+				// const tga = generateTGAfromCanvas(texture);
+				const tga = new TGA({
+					width: texture.width,
+					height: texture.height,
+					imageType: TGA.Type.RLE_RGB,
+				});
+				tga.setImageData(image);
+				
 				const filename = `NT5_Texture_${font.name}_${font.textures.indexOf(texture)}.tga`;
 				const textureFile = new ZipPassThrough(filename);
 				zip.add(textureFile);
-				const tga = generateTGAfromCanvas(texture);
 				textureFile.push(new Uint8Array(tga.arrayBuffer), true);
 				
 				await new Promise(r => requestAnimationFrame(r));
@@ -310,7 +321,12 @@ async function generateFontTextureSet(settings) {
 		canvas.width = textureSize;
 		canvas.height = textureSize;
 		canvas.style.aspectRatio = `${textureSize} / ${textureSize}`;
-		const ctx = canvas.getContext('2d', { willReadFrequently: true });
+		const ctx = canvas.getContext('2d', {
+			// alpha: true,
+			willReadFrequently: true,
+			// colorType: 'float16',
+			// colorSpace: 'srgb',
+		});
 		
 		// If there is a back color we draw a background; Having a background allows the texture to be rendered softly with anti-aliasing
 		// Avoiding the current issues around alpha masking with legibility issues due to pixelated rendering
@@ -402,10 +418,10 @@ async function generateFontTextureSet(settings) {
 			
 			// Check if glyph is colorized/greyscale instead of black/white
 			let isColorized = false;
-			let rx = x - cellSize/2;
-			let ry = y - cellSize * fontMetrics.baselinePercent;
-			let rw = cellSize;
-			let rh = cellSize;
+			let rx = Math.floor(x - cellSize/2);
+			let ry = Math.floor(y - cellSize * fontMetrics.baselinePercent);
+			let rw = Math.ceil(cellSize);
+			let rh = Math.ceil(cellSize);
 			
 			const imageData = ctx.getImageData(rx, ry, rw, rh);
 			let colorCount = 0;
@@ -481,25 +497,6 @@ async function generateFontTextureSet(settings) {
 		
 		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 		
-		// Force pixels around uncolored glyphs to white to prevent halo artifacts
-		for(let [rx, ry, rw, rh] of UncoloredRects)
-		{
-			await new Promise(r => requestAnimationFrame(r));
-			
-			for(let x = rx; x < rx+rw; ++x)
-			{
-				for(let y = ry; y < ry+rh; ++y)
-				{
-					let index = (x + y * imageData.width) * 4;
-					imageData.data[index + 0] = 255;
-					imageData.data[index + 1] = 255;
-					imageData.data[index + 2] = 255;
-				}
-			}
-		}
-		
-		// await new Promise(r => requestAnimationFrame(r));
-		
 		// Force transparent pixels around glyphs to closest opaque pixel color to prevent halo artifacts
 		for(let [rx, ry, rw, rh] of ColorizedRects)
 		{
@@ -543,7 +540,29 @@ async function generateFontTextureSet(settings) {
 			}
 		}
 		
-		ctx.putImageData(imageData, 0, 0);
+		// Force pixels around uncolored glyphs to white to prevent halo artifacts
+		for(let [rx, ry, rw, rh] of UncoloredRects)
+		{
+			await new Promise(r => requestAnimationFrame(r));
+			
+			// Loop through each pixel in the rect and set it to white
+			for(let x = rx; x < rx+rw; ++x)
+			{
+				for(let y = ry; y < ry+rh; ++y)
+				{
+					let index = (x + y * imageData.width) * 4;
+					imageData.data[index + 0] = 255;
+					imageData.data[index + 1] = 255;
+					imageData.data[index + 2] = 255;
+				}
+			}
+		}
+		
+		// ctx.putImageData(imageData, 0, 0);
+		
+		await new Promise(r => requestAnimationFrame(r));
+		
+		return imageData
 	}
 	
 	const texturesQueue = [];
@@ -571,6 +590,7 @@ async function generateFontTextureSet(settings) {
 		characters: allCharacters,
 		textures,
 		texturesQueue,
+		texturesChain: _renderTextureChain,
 		data,
 	};
 }
