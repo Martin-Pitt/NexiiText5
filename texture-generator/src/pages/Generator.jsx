@@ -3,7 +3,6 @@ import { signal, effect, computed } from '@preact/signals';
 import { lazy, LocationProvider, ErrorBoundary, Router, Route } from 'preact-iso';
 import classNames from 'classnames';
 import TGA from '../lib/tga.js';
-import { length } from '../lib/vec2.js';
 import { AsyncZipDeflate, Zip, ZipPassThrough } from 'fflate';
 import {
 	CharsetCommon,
@@ -342,6 +341,17 @@ async function generateFontTextureSet(settings) {
 		ctx.textBaseline = 'alphabetic';
 		ctx.font = font;
 		
+		// Set all image data to white transparent initially
+		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+		for(let i = 0; i < imageData.data.length; i += 4)
+		{
+			imageData.data[i + 0] = 255;
+			imageData.data[i + 1] = 255;
+			imageData.data[i + 2] = 255;
+			imageData.data[i + 3] = 0;
+		}
+		ctx.putImageData(imageData, 0, 0);
+		
 		textures.push(canvas);
 		textureCharacters[canvasIndex] = allCharacters.slice(canvasIndex * maxCharacters, (canvasIndex + 1) * maxCharacters);
 		textureContexts[canvasIndex] = ctx;
@@ -497,43 +507,43 @@ async function generateFontTextureSet(settings) {
 		
 		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 		
-		// Force transparent pixels around glyphs to closest opaque pixel color to prevent halo artifacts
+		// Loop through each colourized rect and fill in fully transparent pixels with the closest opaque pixel
 		for(let [rx, ry, rw, rh] of ColorizedRects)
 		{
 			await new Promise(r => requestAnimationFrame(r));
 			
-			for(let x = rx; x < rx+rw - 1; ++x)
+			// Spiral out from current pixel to find closest opaque pixel for each transparent pixel
+			for(let x = rx; x < rx+rw; ++x)
 			{
-				for(let y = ry; y < ry+rh - 1; ++y)
+				for(let y = ry; y < ry+rh; ++y)
 				{
 					let index = (x + y * imageData.width) * 4;
-					const a = imageData.data[index + 3];
-					if(a > 0) continue;
-					
-					// Find closest opaque pixel
-					let found = false;
-					for(let radius = 1; radius < 3 && !found; ++radius)
+					if(imageData.data[index + 3] === 0)
 					{
-						for(let dx = -radius; dx <= radius && !found; ++dx)
-						{
-							for(let dy = -radius; dy <= radius && !found; ++dy)
-							{
-								if(dx == 0 && dy == 0) continue;
-								let sx = x + dx;
-								let sy = y + dy;
-								if(sx < 0 || sx >= canvas.width) continue;
-								if(sy < 0 || sy >= canvas.height) continue;
-								let sIndex = (sx + sy * imageData.width) * 4;
-								const sa = imageData.data[sIndex + 3];
-								if(sa === 255)
-								{
-									// Copy color
-									imageData.data[index + 0] = imageData.data[sIndex + 0];
-									imageData.data[index + 1] = imageData.data[sIndex + 1];
-									imageData.data[index + 2] = imageData.data[sIndex + 2];
-									found = true;
+						// Find closest opaque pixel by spiral search from current position
+						let closestColor = null;
+						for(let radius = 1; radius < 4; ++radius) {
+							for(let dx = -radius; dx <= radius; ++dx) {
+								for(let dy = -radius; dy <= radius; ++dy) {
+									if(Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+									const px = x + dx;
+									const py = y + dy;
+									if(px < 0 || px >= imageData.width || py < 0 || py >= imageData.height) continue;
+									const ci = (px + py * imageData.width) * 4;
+									if(imageData.data[ci + 3] === 255) {
+										closestColor = [imageData.data[ci], imageData.data[ci + 1], imageData.data[ci + 2]];
+										break;
+									}
 								}
+								if(closestColor) break;
 							}
+							if(closestColor) break;
+						}
+						if(closestColor) {
+							imageData.data[index] = closestColor[0];
+							imageData.data[index + 1] = closestColor[1];
+							imageData.data[index + 2] = closestColor[2];
+							imageData.data[index + 3] = 1;
 						}
 					}
 				}
@@ -555,6 +565,17 @@ async function generateFontTextureSet(settings) {
 					imageData.data[index + 1] = 255;
 					imageData.data[index + 2] = 255;
 				}
+			}
+		}
+		
+		// Force any pixels that are black transparent to white transparent
+		for(let i = 0; i < imageData.data.length; i += 4)
+		{
+			if(imageData.data[i + 3] === 0)
+			{
+				imageData.data[i + 0] = 255;
+				imageData.data[i + 1] = 255;
+				imageData.data[i + 2] = 255;
 			}
 		}
 		
