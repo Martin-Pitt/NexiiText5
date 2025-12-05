@@ -355,7 +355,6 @@ async function generateFontTextureSet(settings) {
 		}
 		
 		FontMetrics[fontFamily].kerning = kerning;
-		console.log(kerning);
 	}
 	
 	async function renderTexture(canvas, ctx, characters) {
@@ -668,7 +667,25 @@ local Data = {
 
 function generateNotecardFromData(data) {
 	return [
-		...data.fonts.map(item => 'Font' + JSON.stringify(item)),
+		...data.fonts.flatMap(item => {
+			let kerning = item.kerning;
+			delete item.kerning;
+			let items = ['Font' + JSON.stringify(item)];
+			if(kerning && Object.keys(kerning).length > 0)
+			{
+				let entries = Object.entries(kerning);
+				for(let i = 0; i < entries.length; i += 100)
+				{
+					let group = entries.slice(i, i + 100);
+					let kerningGroup = group.reduce((obj, [pair, value]) => {
+						obj[pair] = value;
+						return obj;
+					}, {});
+					items.push('Kerning' + JSON.stringify(kerningGroup));
+				}
+			}
+			return items;
+		}),
 		...data.textures.map(item => 'Texture' + JSON.stringify(item)),
 		...Object.entries(data.characters).map(([char, metrics]) => (
 			char + String.fromCodePoint(0xE000) + metrics.join(',')
