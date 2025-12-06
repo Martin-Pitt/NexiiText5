@@ -118,9 +118,6 @@ end
 ScanLinkset()
 
 
-
-
-
 function createTextCluster(obj: {any}?)
     local cluster: Cluster = {
         pos = Styling.position,
@@ -137,7 +134,7 @@ end
 
 function splitTextIsland(force: boolean?)
     local newIsland = true
-    if force then
+    if not force then
         if workingIsland then
             if #workingIsland.faces == 0 then newIsland = false -- Reuse unused island
             elseif workingIsland.y ~= workingCluster.caret.y -- Not same line
@@ -158,7 +155,6 @@ function splitTextIsland(force: boolean?)
                 faces = {},
                 color = Styling.color,
             } :: Island
-            -- if Styling.color ~= vector.one then workingIsland.color = Styling.color end
         else
             workingIsland = {
                 type = activeFont.type,
@@ -170,7 +166,6 @@ function splitTextIsland(force: boolean?)
                 width = 0,
                 availableWidth = activeFont.textureSize/activeFont.columns * FontBaseUnit/activeFont.cellSize,
             } :: Island
-            -- if Styling.color ~= vector.one then workingIsland.color = Styling.color end
         end
         table.insert(workingCluster.islands, workingIsland)
     else -- Reuse existing island
@@ -189,13 +184,13 @@ end
 
 
 -- Writes text into a virtual 2D canvas through a cluster of islands, each representing a mesh prim
-function write(text: string, cluster: Cluster?)
-    if cluster == nil and workingCluster == nil then
+function write(text: string, styles: {[string]: any}?)
+    if styles then for key, value in styles do Styling[key] = value end end
+    if workingCluster == nil then
         workingCluster = createTextCluster()
         splitTextIsland(true)
-    elseif cluster then workingCluster = cluster end
+    end
     if workingIsland == nil then splitTextIsland() end
-    
     local whitespace = workingCluster.whitespace
     local newlines = 0
     
@@ -281,12 +276,12 @@ function write(text: string, cluster: Cluster?)
             
             if workingIsland.type == 'proportional' then
                 local kerningAdjustment = 0
-                -- if prevChar then
-                --     local pair = prevChar .. char
-                --     if activeFont.kerning[pair] then
-                --         kerningAdjustment = activeFont.kerning[pair]
-                --     end
-                -- end
+                if prevChar then
+                    local pair = prevChar .. char
+                    if activeFont.kerning[pair] then
+                        kerningAdjustment = activeFont.kerning[pair]
+                    end
+                end
                 
                 glyphWidth *= (activeFont.fontSize/activeFont.cellSize)
                 
@@ -348,7 +343,8 @@ function write(text: string, cluster: Cluster?)
                 
                 if outOfFaces or notEnoughSpace or exceedsWrap or newlines > 0 then
                     if newlines > 0 then
-                        workingCluster.caret.x = whitespace
+                        whitespace = 0
+                        workingCluster.caret.x = 0
                         workingCluster.caret.y -= Styling.fontSize*Styling.lineHeight * newlines * (FontBaseUnit/Styling.fontSize) * (activeFont.fontSize/activeFont.cellSize)
                     elseif exceedsWrap then
                         whitespace = 0
@@ -393,8 +389,9 @@ function write(text: string, cluster: Cluster?)
     until #codepoints == 0
     
     if newlines > 0 then
+        whitespace = 0
         workingCluster.caret.x = 0
-        workingCluster.caret.y -= Styling.fontSize*Styling.lineHeight * newlines * FontBaseUnit * (activeFont.fontSize/activeFont.cellSize)
+        workingCluster.caret.y -= Styling.fontSize*Styling.lineHeight * newlines * (FontBaseUnit/Styling.fontSize) * (activeFont.fontSize/activeFont.cellSize)
         splitTextIsland()
     end
     
@@ -406,6 +403,8 @@ end
 
 function render(cluster: TextCluster?)
     if cluster == nil then cluster = workingCluster end
+    
+    if #cluster.islands[#cluster.islands].faces == 0 then table.remove(cluster.islands, #cluster.islands) end
     
     local params: {any} = {}
     
@@ -528,51 +527,90 @@ function render(cluster: TextCluster?)
 end
 
 
-Styling.position = vector(0,0,4)
-write("Hello, World 👋🌐!\nThis is a test of NexiiText5.")
-Styling.color = vector(1,0,0)
-write("\nThe quick brown 🦊 jumps over the lazy 🐶.\n0123456789")
-render()
 
-LLTimers:once(2.0, function(scheduled_time)
-    Styling.position = vector(0,0,3)
-    Styling.color = vector(.5,1,.5)
-    render(write("Another text cluster,\ncreated after 2 seconds! 🔥🔥🔥"))
-end)
+local TextRenderingContext = setmetatable({
+    write = write,
+    render = render,
+    resume = function() workingCluster = createTextCluster(resume) end,
+    markdown = function(self, text: string, styles: {[string]: {any}})
+        for _, line in text:split("\n") do
+            local trimmed = line:match("^%s*(.-)%s*$")
+            
+            -- Headings
+            local heading_level = trimmed:match("^(#+)%s")
+            if heading_level then
+                local content = trimmed:sub(#heading_level + 2)
+                write(content .. "\n", styles["h" .. #heading_level] or styles.heading)
+            -- Blockquotes
+            elseif trimmed:match("^>%s") then
+                local content = trimmed:sub(3)
+                write("\t" .. content .. "\n", styles.blockquote)
+            -- Lists
+            elseif trimmed:match("^[%*%-]%s") or trimmed:match("^%d+%.%s") then
+                local content = trimmed:gsub("^[%*%-]%s", ""):gsub("^%d+%.%s", "")
+                write("  • " .. content .. "\n", styles.list)
+            -- Bold and italic
+            else
+                local result = ""
+                local pos = 1
+                while pos <= #trimmed do
+                    local bold_start, bold_end = trimmed:find("%*%*(.-)%*%*", pos)
+                    local italic_start, italic_end = trimmed:find("%*(.-)%*", pos)
+                    local link_start, link_end = trimmed:find("%[(.-)%]%((.-)%)", pos)
+                    
+                    local next_pattern = math.min(bold_start or math.huge, italic_start or math.huge, link_start or math.huge)
+                    
+                    if next_pattern == math.huge then
+                        result = trimmed:sub(pos)
+                        break
+                    end
+                    
+                    if next_pattern == bold_start then
+                        result = trimmed:sub(pos, bold_start - 1)
+                        write(result, styles.text)
+                        write(trimmed:sub(bold_start + 2, bold_end - 2), styles.strong)
+                        pos = bold_end + 1
+                    elseif next_pattern == link_start then
+                        result = trimmed:sub(pos, link_start - 1)
+                        write(result, styles.text)
+                        local link_text = trimmed:match("%[(.-)%]", link_start)
+                        write(link_text, styles.link)
+                        pos = link_end + 1
+                    else
+                        result = trimmed:sub(pos, italic_start - 1)
+                        write(result, styles.text)
+                        write(trimmed:sub(italic_start + 1, italic_end - 1), styles.em)
+                        pos = italic_end + 1
+                    end
+                end
+                
+                if result ~= trimmed then write(result .. "\n", styles.text)
+                else write("\n", styles.text) end
+            end
+        end
+    end,
+}, {
+    __index = Styling,
+    __newindex = Styling,
+})
 
 
-LLTimers:once(2.5, function(scheduled_time)
-    Styling.position = vector(0,0,2)
-    Styling.color = vector(1,1,1); write("Fonts are ")
-    Styling.color = vector(.7,.7,1); write("proportional ↔")
-    render()
-end)
-LLTimers:once(3.5, function(scheduled_time)
-    workingCluster = createTextCluster(resume)
-    Styling.color = vector(1,1,1); write(" and ")
-    Styling.color = vector(.7,.7,1); write("fixed-width ⬜")
-    render()
-end)
-LLTimers:once(4.5, function(scheduled_time)
-    workingCluster = createTextCluster(resume)
-    Styling.color = vector(1,1,1); write(",\nwith ")
-    Styling.color = vector(.7,.7,1); write("kerning")
-    Styling.color = vector(1,1,1); write(" (To, Ve, LY, YA, etc)")
-    render()
-end)
-LLTimers:once(5.0, function(scheduled_time)
-    workingCluster = createTextCluster(resume)
-    write(" and ")
-    Styling.color = vector(.7,.7,1); write("word-wrapping")
-    Styling.color = vector(1,1,1); write("!")
-    render()
-end)
-LLTimers:once(7.0, function(scheduled_time)
-    workingCluster = createTextCluster(resume)
-    write("\n\nEnjoy using ")
-    Styling.color = vector(.7,.7,1); write("NexiiText5")
-    Styling.color = vector(1,1,1); write(".")
-    render()
-end)
 
-LLEvents:on("on_rez", function() ll.ResetScript() end)
+local ctx = TextRenderingContext;
+ctx.position = vector(0,0,4)
+ctx.write("Hello, World 👋🌐!\nThis is a test of NexiiText5.")
+ctx.write("\nThe quick brown 🦊 jumps over the lazy 🐶.\n0123456789", { color = vector(1,0,0) })
+ctx.render();
+
+
+ctx.position = vector(0,0,3)
+ctx:markdown([[
+Fonts are **proportional ↔** and **fixed-width ⬜**,
+with **kerning** (To, Ve, LY, YA, etc) and **word-wrapping**!
+
+Enjoy using **NexiiText5**.
+]], {
+    text = { color = vector(1,1,1) },
+    strong = { color = vector(.7,.7,1) },
+})
+ctx.render()
