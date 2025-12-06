@@ -479,7 +479,6 @@ function render(renderedCluster: RenderedCluster?)
 	for index = #linksetNumbers, #workingCluster.islands + 1, -1 do
 		local releaseParams = releasePrim(linksetNumbers[index])
 		for _, param in releaseParams do table.insert(params, param) end
-		print(`Releasing prim {linksetNumbers[index]} from excess island {index}`)
 		table.remove(linksetNumbers, index)
 	end
 	
@@ -491,7 +490,6 @@ function render(renderedCluster: RenderedCluster?)
 				PRIM_TEXTURE, ALL_SIDES, TEXTURE_TRANSPARENT, vector(1,1,0), vector(0,0,0), 0,
 			} :: {any}
 			for _, param in resetParams do table.insert(params, param) end
-			print(`Reusing prim {linksetNumbers[index]} for island {index}`)
 		else -- Reserve fresh prim
 			linksetNumbers[index] = reservePrim()
 			table.insert(params, PRIM_LINK_TARGET)
