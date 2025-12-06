@@ -3,6 +3,7 @@ if ll.LinksetDataRead("NT5_Fonts") == "" then
 end
 
 local FontBaseUnit = 1000
+local FontFixedUnit = FontBaseUnit
 local Fonts = lljson.decode(ll.LinksetDataRead("NT5_Fonts")) :: {Font}
 local Textures = lljson.decode(ll.LinksetDataRead("NT5_Textures")) :: {Texture}
 for _, texture in Textures do
@@ -29,6 +30,7 @@ type Font = {
     rows: number,
     cellSize: number,
     fontSize: number,
+    textureSize: number,
     
     -- Proportional
     whitespace: {[string]: number},
@@ -165,7 +167,7 @@ function splitTextIsland(force: boolean?)
                 faces = {},
                 color = Styling.color,
                 width = 0,
-                availableWidth = 2048/activeFont.columns * FontBaseUnit/activeFont.cellSize,
+                availableWidth = activeFont.textureSize/activeFont.columns * FontBaseUnit/activeFont.cellSize,
             } :: Island
             -- if Styling.color ~= vector.one then workingIsland.color = Styling.color end
         end
@@ -179,7 +181,7 @@ function splitTextIsland(force: boolean?)
         workingIsland.color = Styling.color
         if activeFont.type == "proportional" then
             workingIsland.width = 0
-            workingIsland.availableWidth = 2048/activeFont.columns * FontBaseUnit/activeFont.cellSize
+            workingIsland.availableWidth = activeFont.textureSize/activeFont.columns * FontBaseUnit/activeFont.cellSize
         end
     end
 end
@@ -204,8 +206,8 @@ function write(text: string, cluster: Cluster?)
         
         if activeFont.type == 'proportional' and activeFont.whitespace[char] then
             whitespace += activeFont.whitespace[char]
-        elseif activeFont.type == 'fixed' and char == " " then
-            whitespace += 250
+        elseif activeFont.type == 'fixed' and char == " " then -- TODO: Force other whitespace to fixed width as well?
+            whitespace += FontFixedUnit
         elseif char == "\t" then -- Tab indentation
             if newlines > 0 then
                 workingCluster.caret.x = 0
@@ -230,58 +232,59 @@ function write(text: string, cluster: Cluster?)
             end
             local fontIndex, textureIndex, charIndex, glyphWidth, leftGap, rightGap = table.unpack(lljson.decode(`[{metrics}]`) :: {number})
             
-            if prevChar then
-                local pair = prevChar .. char
-                if activeFont.kerning[pair] then
-                    glyphWidth += activeFont.kerning[pair]
-                end
-            end
-            prevChar = char
-            
-            glyphWidth *= (activeFont.fontSize/activeFont.cellSize)
-            
             if Fonts[fontIndex].name ~= activeFont.name then
                 local prevFont = activeFont
                 activeFont = Fonts[fontIndex]
-                if prevFont.type ~= activeFont.type then splitTextIsland() end
-            end
-            
-            local addedWidth = whitespace + glyphWidth
-            local islandEnd = workingCluster.caret.x - workingIsland.x
-            
-            local outOfFaces = #workingIsland.faces >= 8
-            local notEnoughSpace = (workingIsland.type == 'proportional' and addedWidth > workingIsland.availableWidth)
-                                or (workingIsland.type == 'fixed' and addedWidth > #workingIsland.faces*activeFont.cellSize)
-            local wouldOverlapLeftGap = islandEnd + whitespace + glyphWidth*.5 > leftGap
-            local exceedsWrap = workingCluster.caret.x + addedWidth > (Styling.textWrapLength * FontBaseUnit/Styling.fontSize)
-            
-            if outOfFaces or notEnoughSpace or wouldOverlapLeftGap or exceedsWrap or newlines > 0 then
-                if newlines > 0 then
-                    workingCluster.caret.x = whitespace
-                    workingCluster.caret.y -= Styling.fontSize*Styling.lineHeight * newlines * (FontBaseUnit/Styling.fontSize) * (activeFont.fontSize/activeFont.cellSize)
-                elseif exceedsWrap then
+                if prevFont.type ~= activeFont.type then
+                    workingCluster.caret.x += whitespace
+                    splitTextIsland()
                     whitespace = 0
-                    workingCluster.caret.x = 0
-                    workingCluster.caret.y -= Styling.fontSize*Styling.lineHeight * (FontBaseUnit/Styling.fontSize) * (activeFont.fontSize/activeFont.cellSize)
                 end
-                
-                workingCluster.caret.x += whitespace
-                splitTextIsland()
-                whitespace = 0
-                addedWidth = glyphWidth
-                islandEnd = 0
             end
             
-            -- Add glyph
-            local texture = Textures[textureIndex]
             if workingIsland.type == 'proportional' then
-                workingIsland.availableWidth -= addedWidth
-                if rightGap < workingIsland.availableWidth then
-                    workingIsland.availableWidth = rightGap
+                if prevChar then
+                    local pair = prevChar .. char
+                    if activeFont.kerning[pair] then
+                        glyphWidth += activeFont.kerning[pair]
+                    end
                 end
-                workingIsland.width += addedWidth
                 
-                local columnWidth = 2048 / activeFont.columns
+                glyphWidth *= (activeFont.fontSize/activeFont.cellSize)
+                
+                local addedWidth = whitespace + glyphWidth
+                local islandEnd = workingCluster.caret.x - workingIsland.x
+                
+                local outOfFaces = #workingIsland.faces >= 8
+                local notEnoughSpace = addedWidth > workingIsland.availableWidth
+                local wouldOverlapLeftGap = islandEnd + whitespace + glyphWidth*.5 > leftGap
+                local exceedsWrap = workingCluster.caret.x + addedWidth > (Styling.textWrapLength * FontBaseUnit/Styling.fontSize)
+                
+                if outOfFaces or notEnoughSpace or wouldOverlapLeftGap or exceedsWrap or newlines > 0 then
+                    if newlines > 0 then
+                        workingCluster.caret.x = whitespace
+                        workingCluster.caret.y -= Styling.fontSize*Styling.lineHeight * newlines * (FontBaseUnit/Styling.fontSize) * (activeFont.fontSize/activeFont.cellSize)
+                    elseif exceedsWrap then
+                        whitespace = 0
+                        workingCluster.caret.x = 0
+                        workingCluster.caret.y -= Styling.fontSize*Styling.lineHeight * (FontBaseUnit/Styling.fontSize) * (activeFont.fontSize/activeFont.cellSize)
+                    end
+                    
+                    workingCluster.caret.x += whitespace
+                    splitTextIsland()
+                    whitespace = 0
+                    addedWidth = glyphWidth
+                    islandEnd = 0
+                end
+                
+                -- Add glyph
+                local texture = Textures[textureIndex]
+                workingIsland.availableWidth -= addedWidth
+                if rightGap < workingIsland.availableWidth then workingIsland.availableWidth = rightGap end
+                workingIsland.width += addedWidth
+                workingCluster.caret.x += addedWidth
+                
+                local columnWidth = activeFont.textureSize / activeFont.columns
                 local x = (columnWidth*.5 + columnWidth * ((charIndex - 1) % activeFont.columns))
                 local y = activeFont.cellSize * math.floor((charIndex - 1) / activeFont.columns)
                 local pos = (islandEnd + whitespace + glyphWidth*.5) * (activeFont.cellSize/FontBaseUnit)
@@ -292,8 +295,42 @@ function write(text: string, cluster: Cluster?)
                 } :: IslandFace
                 if Styling.color ~= vector.one or workingIsland.color ~= Styling.color then face.color = Styling.color end
                 table.insert(workingIsland.faces, face)
-            else -- fixed
-                local x = activeFont.cellSize * ((charIndex - 1) % activeFont.columns)
+                
+                newlines = 0
+                whitespace = 0
+            elseif workingIsland.type == 'fixed' then
+                local addedWidth = whitespace + FontFixedUnit
+                
+                local outOfFaces = #workingIsland.faces >= 8
+                local notEnoughSpace = addedWidth > (8 - #workingIsland.faces) * FontFixedUnit
+                local exceedsWrap = workingCluster.caret.x + addedWidth > (Styling.textWrapLength * FontBaseUnit/Styling.fontSize)
+                
+                if outOfFaces or notEnoughSpace or exceedsWrap or newlines > 0 then
+                    if newlines > 0 then
+                        workingCluster.caret.x = whitespace
+                        workingCluster.caret.y -= Styling.fontSize*Styling.lineHeight * newlines * (FontBaseUnit/Styling.fontSize) * (activeFont.fontSize/activeFont.cellSize)
+                    elseif exceedsWrap then
+                        whitespace = 0
+                        workingCluster.caret.x = 0
+                        workingCluster.caret.y -= Styling.fontSize*Styling.lineHeight * (FontBaseUnit/Styling.fontSize) * (activeFont.fontSize/activeFont.cellSize)
+                    end
+                    
+                    workingCluster.caret.x += whitespace
+                    splitTextIsland()
+                    whitespace = 0
+                    addedWidth = FontFixedUnit
+                end
+                
+                -- Add glyph
+                local texture = Textures[textureIndex]
+                workingCluster.caret.x += addedWidth
+                
+                for step = 0, whitespace, FontFixedUnit do
+                    local emptyFace = nil
+                    table.insert(workingIsland.faces, emptyFace)
+                end
+                
+                local x = activeFont.cellSize*.5 + activeFont.cellSize * ((charIndex - 1) % activeFont.columns)
                 local y = activeFont.cellSize * math.floor((charIndex - 1) / activeFont.columns)
                 local face = {
                     t = textureIndex,
@@ -302,11 +339,12 @@ function write(text: string, cluster: Cluster?)
                 } :: IslandFace
                 if Styling.color ~= vector.one or workingIsland.color ~= Styling.color then face.color = Styling.color end
                 table.insert(workingIsland.faces, face)
+                
+                newlines = 0
+                whitespace = 0
             end
-            workingCluster.caret.x += addedWidth
             
-            newlines = 0
-            whitespace = 0
+            prevChar = char
         end
     until #codepoints == 0
     
@@ -327,7 +365,7 @@ function render(cluster: TextCluster?)
     
     local params: {any} = {}
     
-    for _, island in cluster.islands do
+    for _, island in (cluster :: Cluster).islands do
         local free = ll.LinksetDataRead("NT5_Free")
         if #free == 0 then error("No free text prims available in linkset") end
         local link = string.byte(free, 1, 1)
@@ -353,24 +391,34 @@ function render(cluster: TextCluster?)
         for index, face in island.faces do
             local texture = Textures[face.t]
             local islandWidth = 0
+            local repeats, coords
             if island.type == "proportional" then
                 islandWidth = island.width * texture.font.cellSize/FontBaseUnit
+                
+                repeats = vector(
+                    islandWidth / texture.width,
+                    texture.font.cellSize / texture.height,
+                    0
+                )
+                coords = vector(
+                    (face.u + islandWidth*.5) / texture.width,
+                    face.v / texture.height,
+                    0
+                )
             else
                 islandWidth = 8 * texture.font.cellSize
+                
+                repeats = vector(
+                    texture.font.cellSize / texture.width,
+                    texture.font.cellSize / texture.height,
+                    0
+                )
+                coords = vector(
+                    face.u / texture.width,
+                    face.v / texture.height,
+                    0
+                )
             end
-            
-            --islandWidth *= (texture.font.fontSize/texture.font.cellSize)
-            
-            local repeats = vector(
-                islandWidth / texture.width,
-                texture.font.cellSize / texture.height,
-                0
-            )
-            local coords = vector(
-                (face.u + islandWidth*.5) / texture.width,
-                face.v / texture.height,
-                0
-            )
             
             if face.color then
                 table.insert(params, PRIM_COLOR)
@@ -386,24 +434,45 @@ function render(cluster: TextCluster?)
             table.insert(params, 0)
         end
         
-        local pos = vector(
-            0,
-            (island.x + island.width*.5) * (island.fontSize/FontBaseUnit),
-            island.y * (island.fontSize/FontBaseUnit) -- + island.fontSize * 0.25
-        )
-        
-        pos *= workingCluster.rot
-        
-        table.insert(params, PRIM_POS_LOCAL)
-        table.insert(params, workingCluster.pos + pos)
-        table.insert(params, PRIM_ROT_LOCAL)
-        table.insert(params, quaternion(0,0,-1,0) *workingCluster.rot)
-        table.insert(params, PRIM_SIZE)
-        table.insert(params, vector(
-            0.01,
-            island.width / FontBaseUnit * island.fontSize,
-            island.fontSize
-        ))
+        if island.type == "proportional" then
+            local pos = vector(
+                0,
+                (island.x + island.width*.5) * (island.fontSize/FontBaseUnit),
+                island.y * (island.fontSize/FontBaseUnit) -- + island.fontSize * 0.25
+            )
+            
+            pos *= workingCluster.rot
+            
+            table.insert(params, PRIM_POS_LOCAL)
+            table.insert(params, workingCluster.pos + pos)
+            table.insert(params, PRIM_ROT_LOCAL)
+            table.insert(params, quaternion(0,0,-1,0) *workingCluster.rot)
+            table.insert(params, PRIM_SIZE)
+            table.insert(params, vector(
+                0.01,
+                island.width / FontBaseUnit * island.fontSize,
+                island.fontSize
+            ))
+        elseif island.type == "fixed" then
+            local pos = vector(
+                0,
+                (island.x + FontFixedUnit*4) * (island.fontSize/FontBaseUnit),
+                island.y * (island.fontSize/FontBaseUnit) -- + island.fontSize * 0.25
+            )
+            
+            pos *= workingCluster.rot
+            
+            table.insert(params, PRIM_POS_LOCAL)
+            table.insert(params, workingCluster.pos + pos)
+            table.insert(params, PRIM_ROT_LOCAL)
+            table.insert(params, quaternion(0,0,.70711,.70711) *workingCluster.rot)
+            table.insert(params, PRIM_SIZE)
+            table.insert(params, vector(
+                (FontFixedUnit*8) / FontBaseUnit * island.fontSize,
+                0.01,
+                island.fontSize
+            ))
+        end
     end
     
     ll.SetLinkPrimitiveParamsFast(0, params)
@@ -413,26 +482,37 @@ function render(cluster: TextCluster?)
 end
 
 Styling.position = vector(0,0,4)
-write("Hello, World!\nThis is a test of NexiiText5.")
+write("Hello, World 👋🌐!\nThis is a test of NexiiText5.")
 Styling.color = vector(1,0,0)
-write("\nThe quick brown fox jumps over the lazy dog.\n0123456789")
+write("\nThe quick brown ")
+Styling.color = vector(1,1,1)
+write("🦊")
+Styling.color = vector(1,0,0)
+write(" jumps over the lazy ")
+Styling.color = vector(1,1,1)
+write("🐶")
+Styling.color = vector(1,0,0)
+write(".\n0123456789")
 render()
 
 LLTimers:once(2.0, function(scheduled_time)
     Styling.position = vector(0,0,3)
     Styling.color = vector(.5,1,.5)
-    render(write("Another text cluster,\ncreated after 2 seconds!"))
+    write("Another text cluster,\ncreated after 2 seconds!")
+    Styling.color = vector(1,1,1)
+    write(" 🔥🔥🔥")
+    render()
 end)
 
 -- LLTimers:once(0.5, function(scheduled_time)
     Styling.position = vector(0,0,2)
     Styling.color = vector(1,1,1); write("Fonts are ")
     Styling.color = vector(.7,.7,1); write("proportional")
-    Styling.color = vector(1,1,1); write(" and ")
+    Styling.color = vector(1,1,1); write(" ↔ and ")
     Styling.color = vector(.7,.7,1); write("fixed-width")
-    Styling.color = vector(1,1,1); write(",\nwith ")
+    Styling.color = vector(1,1,1); write(" ⬜,\nwith ")
     Styling.color = vector(.7,.7,1); write("kerning")
-    Styling.color = vector(1,1,1); write(" and ")
+    Styling.color = vector(1,1,1); write(" (To, Ve, LY, YA, etc) and ")
     Styling.color = vector(.7,.7,1); write("word-wrapping")
     Styling.color = vector(1,1,1); write("!\n\nEnjoy using ")
     Styling.color = vector(.7,.7,1); write("NexiiText5")

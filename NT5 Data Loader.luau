@@ -1,22 +1,7 @@
-local Notecard = uuid("eea337c6-feb6-6174-343e-5437f6526646")
+local Notecard = uuid("055da5a2-acae-6d84-d2cb-edc23bde8084")
 
-type Font = {
-    name: string,
-    type: "proportional" | "fixed",
-    columns: number,
-    rows: number,
-    cellSize: number,
-    kerning: {[string]:number}
-}
-type Texture = {
-    uuid: uuid,
-    width: number,
-    height: number,
-    font: number,
-}
-
-local Fonts: {Font} = {}
-local Textures: {Texture} = {}
+local Fonts = {}
+local Textures = {}
 local characterCount = 0
 
 local index = 1
