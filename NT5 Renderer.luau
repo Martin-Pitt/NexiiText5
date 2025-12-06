@@ -34,10 +34,6 @@ type Font = {
 	fontSize: number,
 	textureSize: number,
 	textureCount: number,
-	
-	-- Proportional
-	whitespace: {[string]: number},
-	kerning: {[string]:number},
 }
 
 type Texture = {
@@ -205,28 +201,33 @@ function write(text: string, styles: {[string]: any}?)
 		local nextChar = nil
 		if #codepoints > 0 then nextChar = utf8.char(codepoints[1]) end
 		
-		if activeFont.type == 'proportional' and activeFont.whitespace[char] then
-			whitespace += activeFont.whitespace[char]
-		elseif activeFont.type == 'fixed' and char == " " then -- TODO: Force other whitespace to fixed width as well?
-			-- Lookahead for proportional font switch
-			local switchedToProportional = false
-			if nextChar then
-				local nextMetrics = ll.LinksetDataRead("NT5_" .. nextChar)
-				if nextMetrics ~= "" then
-					local fontIndex = table.unpack(lljson.decode(`[{nextMetrics}]`) :: {number})
-					local nextFont = Fonts[fontIndex]
-					if nextFont.name ~= activeFont.name and nextFont.type == 'proportional' then
-						activeFont = nextFont
-						whitespace += nextFont.whitespace[" "]
-						workingCluster.caret.x += whitespace
-						splitTextIsland()
-						whitespace = 0
-						switchedToProportional = true
+		local spaceMetrics = ll.LinksetDataRead(`NT5_Whitespace_{char}`)
+		if spaceMetrics ~= "" then
+			if activeFont.type == 'proportional' then
+				whitespace += tonumber(spaceMetrics)
+			else
+				-- Lookahead for proportional font switch
+				local switchedToProportional = false
+				if nextChar then
+					local nextMetrics = ll.LinksetDataRead("NT5_" .. nextChar)
+					if nextMetrics ~= "" then
+						local fontIndex = table.unpack(lljson.decode(`[{nextMetrics}]`) :: {number})
+						local nextFont = Fonts[fontIndex]
+						if nextFont.name ~= activeFont.name and nextFont.type == 'proportional' then
+							activeFont = nextFont
+							whitespace += tonumber(spaceMetrics)
+							workingCluster.caret.x += whitespace
+							splitTextIsland()
+							whitespace = 0
+							switchedToProportional = true
+						end
 					end
 				end
+				
+				if not switchedToProportional then whitespace += FontFixedUnit end
 			end
+		elseif activeFont.type == 'fixed' and char == " " then -- TODO: Force other whitespace to fixed width as well?
 			
-			if not switchedToProportional then whitespace += FontFixedUnit end
 		elseif char == "\t" then -- Tab indentation
 			if newlines > 0 then
 				workingCluster.caret.x = 0
@@ -244,6 +245,7 @@ function write(text: string, styles: {[string]: any}?)
 			newlines += 1
 			whitespace = 0
 		else
+			-- Load base metrics
 			local metrics = ll.LinksetDataRead("NT5_" .. char)
 			if metrics == "" then
 				char = "�" -- Fallback
@@ -258,6 +260,7 @@ function write(text: string, styles: {[string]: any}?)
 			local rightGap: number
 			local isColor: boolean
 			
+			-- Switch font if needed
 			if Fonts[fontIndex].name ~= activeFont.name then
 				local prevFont = activeFont
 				activeFont = Fonts[fontIndex]
@@ -268,26 +271,23 @@ function write(text: string, styles: {[string]: any}?)
 				end
 			end
 			
-			if activeFont.type == 'proportional' then
+			-- Proportional or fixed-width rendering methods
+			if workingIsland.type == 'proportional' then
+				-- Load type-specific metrics
 				glyphWidth = metrics[4]
 				leftGap = metrics[5] - (FontBaseUnit*.5 + glyphWidth*.5)
 				rightGap = metrics[6] - (FontBaseUnit*.5 + glyphWidth*.5)
 				isColor = metrics[7] == 1 and true or false
-			elseif activeFont.type == 'fixed' then
-				isColor = metrics[4] == 1 and true or false
-			end
-			
-			if workingIsland.type == 'proportional' then
+				
+				-- Check for kerning
 				local kerningAdjustment = 0
 				if prevChar then
 					local pair = prevChar .. char
-					if activeFont.kerning[pair] then
-						kerningAdjustment = activeFont.kerning[pair]
-					end
+					local kerning = ll.LinksetDataRead(`NT5_Kerning_{pair}`)
+					if kerning ~= "" then kerningAdjustment = tonumber(kerning) end
 				end
 				
 				glyphWidth *= (activeFont.fontSize/activeFont.cellSize)
-				
 				local addedWidth = whitespace + kerningAdjustment*.5 + glyphWidth
 				local islandEnd = workingCluster.caret.x - workingIsland.x
 				
@@ -346,8 +346,10 @@ function write(text: string, styles: {[string]: any}?)
 				newlines = 0
 				whitespace = 0
 			elseif workingIsland.type == 'fixed' then
-				local addedWidth = whitespace + FontFixedUnit
+				-- Load type-specific metrics
+				isColor = metrics[4] == 1 and true or false
 				
+				local addedWidth = whitespace + FontFixedUnit
 				local outOfFaces = #workingIsland.faces >= 8
 				local notEnoughSpace = addedWidth > (8 - #workingIsland.faces) * FontFixedUnit
 				local exceedsWrap = workingCluster.caret.x + addedWidth > (Styling.textWrapLength * FontBaseUnit/Styling.fontSize)
@@ -593,6 +595,7 @@ function markdown(text: string, styles: {[string]: any})
 	end
 end
 
+
 local TextRenderingContext = setmetatable({
 	write = write,
 	render = render,
@@ -602,7 +605,6 @@ local TextRenderingContext = setmetatable({
 	__index = Styling,
 	__newindex = Styling,
 })
-
 
 
 return TextRenderingContext;

@@ -3,6 +3,8 @@ local Notecard = uuid("087a99f6-5c48-5942-0652-89e4f4185b90")
 local Fonts = {}
 local Textures = {}
 local characterCount = 0
+local Whitespace = {}
+local Kerning = {}
 
 local index = 1
 local count = 0
@@ -24,8 +26,20 @@ function readNotecardLines()
             return
         elseif string.sub(line, 1, 4) == "Font" then
             local font = lljson.decode(string.sub(line, 5))
+            
+            if font.whitespace then
+                for key, value in font.whitespace do
+                    if Whitespace[key] == nil then Whitespace[key] = value end
+                end
+                font.whitespace = nil
+            end
+            
             table.insert(Fonts, font)
         elseif string.sub(line, 1, 7) == "Kerning" then
+            local kerning = lljson.decode(string.sub(line, 8)) :: {[string]:number}
+            for key, value in kerning do Kerning[key] = value end
+            
+            --[[
             if Fonts[#Fonts].kerning == nil then
                 Fonts[#Fonts].kerning = {}
             end
@@ -35,6 +49,7 @@ function readNotecardLines()
             for key, value in kerning do
                 Fonts[#Fonts].kerning[key] = value
             end
+            ]]
         elseif string.sub(line, 1, 7) == "Texture" then
             local texture = lljson.decode(string.sub(line, 8))
             texture.uuid = uuid(texture.uuid)
@@ -71,9 +86,12 @@ function readNotecardLines()
     end
     
     ll.LinksetDataWrite("NT5_Fonts", lljson.encode(Fonts))
+    for key, value in Whitespace do ll.LinksetDataWrite(`NT5_Whitespace_{key}`, tostring(value)) end
+    for key, value in Kerning do ll.LinksetDataWrite(`NT5_Kerning_{key}`, tostring(value)) end
     ll.LinksetDataWrite("NT5_Textures", lljson.encode(Textures))
     local dataUsed = (1024*128) - ll.LinksetDataAvailable()
-    print(`Finished loading; {#Fonts} fonts, {#Textures} textures, {characterCount} characters; {string.format("%.2f", dataUsed/1024):gsub("%.?0+$", "")}KB/128KB linkset data`)
+    print(`Finished loading; {#Fonts} fonts, {#Textures} textures, {characterCount} characters; Using {string.format("%.1f", dataUsed/1024):gsub("%.?0+$", "")}KB / 128KB of Linkset Data`)
+    print(`Removing loader script`)
     ll.RemoveInventory(ll.GetScriptName())
 end
 
