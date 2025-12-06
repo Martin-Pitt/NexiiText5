@@ -294,14 +294,13 @@ async function generateFontTextureSet(settings) {
 		columns,
 	} = settings;
 	let characters = settings.characters;
-	const textureSize = 2048;
 	
 	if(!(fontFamily in FontMetrics)) FontMetrics[fontFamily] = await getFontMetrics(fontFamily);
 	const fontMetrics = FontMetrics[fontFamily];
 	
-	const cellSize = settings.cellSize || textureSize / columns;
-	const rows = textureSize / cellSize;
-	const columnWidth = textureSize / columns;
+	const cellSize = settings.cellSize || TextureSize / columns;
+	const rows = TextureSize / cellSize;
+	const columnWidth = TextureSize / columns;
 	const data = {};
 	const maxCharacters = columns * rows;
 	const allCharacters = characters.slice();
@@ -317,9 +316,9 @@ async function generateFontTextureSet(settings) {
 	{
 		// Setup canvas
 		const canvas = document.createElement('canvas');
-		canvas.width = textureSize;
-		canvas.height = textureSize;
-		canvas.style.aspectRatio = `${textureSize} / ${textureSize}`;
+		canvas.width = TextureSize;
+		canvas.height = TextureSize;
+		canvas.style.aspectRatio = `${TextureSize} / ${TextureSize}`;
 		const ctx = canvas.getContext('2d', {
 			// alpha: true,
 			willReadFrequently: true,
@@ -332,7 +331,7 @@ async function generateFontTextureSet(settings) {
 		if(backColor !== 'transparent')
 		{
 			ctx.fillStyle = backColor;
-			ctx.fillRect(0, 0, textureSize, textureSize);
+			ctx.fillRect(0, 0, TextureSize, TextureSize);
 		}
 		
 		// Font setup
@@ -421,8 +420,8 @@ async function generateFontTextureSet(settings) {
 				width: metrics.width, 
 				leftGap: 0,
 				rightGap: 0,
-				textureX: x - textureSize/2,
-				textureY: 1 - ((y + cellSize/2) / textureSize/2),
+				textureX: x - TextureSize/2,
+				textureY: 1 - ((y + cellSize/2) / TextureSize/2),
 			};
 			
 			
@@ -485,10 +484,10 @@ async function generateFontTextureSet(settings) {
 		let lastRow = Math.floor((characters.length - 1) / columns);
 		let usedHeight = (lastRow + 1) * cellSize;
 		let croppedHeight = Math.pow(2, Math.ceil(Math.log2(usedHeight)));
-		if(croppedHeight < textureSize)
+		if(croppedHeight < TextureSize)
 		{
 			const croppedCanvas = document.createElement('canvas');
-			croppedCanvas.width = textureSize;
+			croppedCanvas.width = TextureSize;
 			croppedCanvas.height = croppedHeight;
 			const croppedCtx = croppedCanvas.getContext('2d');
 			croppedCtx.drawImage(
@@ -792,8 +791,7 @@ function generateTGAfromCanvas(canvas) {
 
 const FontMetrics = {};
 const FontBaseUnit = 1000; // We'll save all metrics relative to this base unit, which also represents 1 em square
-
-
+const TextureSize = 1024;
 
 const State = {
 	InterSettings: signal({
@@ -802,8 +800,8 @@ const State = {
 		backColor: 'transparent',
 		textColor: 'white',
 		type: 'proportional',
-		columns: 9,
-		cellSize: 2048/24,
+		columns: 5,
+		cellSize: TextureSize/12,
 	}),
 	EmojiSettings: signal({
 		name: 'Emojis',
@@ -811,7 +809,7 @@ const State = {
 		backColor: 'transparent',
 		textColor: 'white',
 		type: 'fixed',
-		columns: 16,
+		columns: 8,
 	}),
 	
 	Fonts: {
