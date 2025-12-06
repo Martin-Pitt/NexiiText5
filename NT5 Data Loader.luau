@@ -1,4 +1,4 @@
-local Notecard = uuid("23ef313a-1aca-8a42-61a1-ac7a298d1171")
+local Notecard = uuid("eea337c6-feb6-6174-343e-5437f6526646")
 
 type Font = {
     name: string,
@@ -6,11 +6,13 @@ type Font = {
     columns: number,
     rows: number,
     cellSize: number,
+    kerning: {[string]:number}
 }
 type Texture = {
     uuid: uuid,
     width: number,
     height: number,
+    font: number,
 }
 
 local Fonts: {Font} = {}
@@ -38,6 +40,16 @@ function readNotecardLines()
         elseif string.sub(line, 1, 4) == "Font" then
             local font = lljson.decode(string.sub(line, 5))
             table.insert(Fonts, font)
+        elseif string.sub(line, 1, 7) == "Kerning" then
+            if Fonts[#Fonts].kerning == nil then
+                Fonts[#Fonts].kerning = {}
+            end
+            
+            -- Append kerning to last font
+            local kerning = lljson.decode(string.sub(line, 8)) :: {[string]:number}
+            for key, value in kerning do
+                Fonts[#Fonts].kerning[key] = value
+            end
         elseif string.sub(line, 1, 7) == "Texture" then
             local texture = lljson.decode(string.sub(line, 8))
             texture.uuid = uuid(texture.uuid)
