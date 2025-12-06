@@ -3,7 +3,6 @@ import { signal, effect, computed } from '@preact/signals';
 import { lazy, LocationProvider, ErrorBoundary, Router, Route } from 'preact-iso';
 import classNames from 'classnames';
 import TGA from '../lib/tga.js';
-import { length } from '../lib/vec2.js';
 import { AsyncZipDeflate, Zip, ZipPassThrough } from 'fflate';
 import {
 	CharsetCommon,
@@ -58,17 +57,28 @@ function DownloadAsZip(props) {
 		zip.add(dataFile);
 		dataFile.push(new TextEncoder().encode(generateNotecardFromData(data)), true);
 		
-		
 		for(let font of [
 			State.Fonts.Inter.value,
 			State.Fonts.Emojis.value
 		]) {
-			for(let texture of font.textures)
+			let images = font.texturesChain;
+			for(let iter = 0; iter < images.length; ++iter) images[iter] = await images[iter]();
+			
+			for(let iter = 0; iter < font.textures.length; ++iter)
 			{
+				const texture = font.textures[iter];
+				const image = images[iter];
+				// const tga = generateTGAfromCanvas(texture);
+				const tga = new TGA({
+					width: texture.width,
+					height: texture.height,
+					imageType: TGA.Type.RLE_RGB,
+				});
+				tga.setImageData(image);
+				
 				const filename = `NT5_Texture_${font.name}_${font.textures.indexOf(texture)}.tga`;
 				const textureFile = new ZipPassThrough(filename);
 				zip.add(textureFile);
-				const tga = generateTGAfromCanvas(texture);
 				textureFile.push(new Uint8Array(tga.arrayBuffer), true);
 				
 				await new Promise(r => requestAnimationFrame(r));
@@ -145,11 +155,13 @@ function TexturesPreview(props) {
 				if(!metrics) continue;
 				
 				if(props.font.type === 'fixed') data.characters[character] = [
-					metrics.textureIndex,
+					props.fontIndex,
+					1 + props.font.textures.indexOf(metrics.texture),
 					metrics.index,
 				];
 				else data.characters[character] = [
-					metrics.textureIndex,
+					props.fontIndex,
+					1 + props.font.textures.indexOf(metrics.texture),
 					metrics.index,
 					metrics.width,
 					metrics.leftGap,
@@ -308,7 +320,12 @@ async function generateFontTextureSet(settings) {
 		canvas.width = textureSize;
 		canvas.height = textureSize;
 		canvas.style.aspectRatio = `${textureSize} / ${textureSize}`;
-		const ctx = canvas.getContext('2d', { willReadFrequently: true });
+		const ctx = canvas.getContext('2d', {
+			// alpha: true,
+			willReadFrequently: true,
+			// colorType: 'float16',
+			// colorSpace: 'srgb',
+		});
 		
 		// If there is a back color we draw a background; Having a background allows the texture to be rendered softly with anti-aliasing
 		// Avoiding the current issues around alpha masking with legibility issues due to pixelated rendering
@@ -324,9 +341,46 @@ async function generateFontTextureSet(settings) {
 		ctx.textBaseline = 'alphabetic';
 		ctx.font = font;
 		
+		// Set all image data to white transparent initially
+		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+		for(let i = 0; i < imageData.data.length; i += 4)
+		{
+			imageData.data[i + 0] = 255;
+			imageData.data[i + 1] = 255;
+			imageData.data[i + 2] = 255;
+			imageData.data[i + 3] = 0;
+		}
+		ctx.putImageData(imageData, 0, 0);
+		
 		textures.push(canvas);
 		textureCharacters[canvasIndex] = allCharacters.slice(canvasIndex * maxCharacters, (canvasIndex + 1) * maxCharacters);
 		textureContexts[canvasIndex] = ctx;
+	}
+	
+	// If characters contain alphabetic characters then lets compute kerning as well
+	if(allCharacters.some(c => /[a-zA-Z]/.test(c)))
+	{
+		const ctx = document.createElement('canvas').getContext('2d');
+		ctx.font = font;
+		await document.fonts.load(ctx.font);
+		
+		const kerning = {};
+		// Compute kerning pairs only between the alphabetic characters
+		const alphabeticChars = allCharacters.filter(c => /[a-zA-Z]/.test(c));
+		for(let firstChar of alphabeticChars)
+		{
+			for(let secondChar of alphabeticChars)
+			{
+				const pair = firstChar + secondChar;
+				const widthFirst = ctx.measureText(firstChar).width;
+				const widthSecond = ctx.measureText(secondChar).width;
+				const widthPair = ctx.measureText(pair).width;
+				const kernValue = widthPair - (widthFirst + widthSecond);
+				if(kernValue !== 0) kerning[pair] = Math.round((kernValue / fontSize) * FontBaseUnit);
+			}
+		}
+		
+		FontMetrics[fontFamily].kerning = kerning;
 	}
 	
 	async function renderTexture(canvas, ctx, characters) {
@@ -363,19 +417,21 @@ async function generateFontTextureSet(settings) {
 			ctx.font = font;
 			data[character] = {
 				texture: canvas,
-				index,
+				index: 1 + index,
 				width: metrics.width, 
 				leftGap: 0,
 				rightGap: 0,
+				textureX: x - textureSize/2,
+				textureY: 1 - ((y + cellSize/2) / textureSize/2),
 			};
 			
 			
 			// Check if glyph is colorized/greyscale instead of black/white
 			let isColorized = false;
-			let rx = x - cellSize/2;
-			let ry = y - cellSize * fontMetrics.baselinePercent;
-			let rw = cellSize;
-			let rh = cellSize;
+			let rx = Math.floor(x - cellSize/2);
+			let ry = Math.floor(y - cellSize * fontMetrics.baselinePercent);
+			let rw = Math.ceil(cellSize);
+			let rh = Math.ceil(cellSize);
 			
 			const imageData = ctx.getImageData(rx, ry, rw, rh);
 			let colorCount = 0;
@@ -451,11 +507,55 @@ async function generateFontTextureSet(settings) {
 		
 		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 		
+		// Loop through each colourized rect and fill in fully transparent pixels with the closest opaque pixel
+		for(let [rx, ry, rw, rh] of ColorizedRects)
+		{
+			await new Promise(r => requestAnimationFrame(r));
+			
+			// Spiral out from current pixel to find closest opaque pixel for each transparent pixel
+			for(let x = rx; x < rx+rw; ++x)
+			{
+				for(let y = ry; y < ry+rh; ++y)
+				{
+					let index = (x + y * imageData.width) * 4;
+					if(imageData.data[index + 3] === 0)
+					{
+						// Find closest opaque pixel by spiral search from current position
+						let closestColor = null;
+						for(let radius = 1; radius < 4; ++radius) {
+							for(let dx = -radius; dx <= radius; ++dx) {
+								for(let dy = -radius; dy <= radius; ++dy) {
+									if(Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+									const px = x + dx;
+									const py = y + dy;
+									if(px < 0 || px >= imageData.width || py < 0 || py >= imageData.height) continue;
+									const ci = (px + py * imageData.width) * 4;
+									if(imageData.data[ci + 3] === 255) {
+										closestColor = [imageData.data[ci], imageData.data[ci + 1], imageData.data[ci + 2]];
+										break;
+									}
+								}
+								if(closestColor) break;
+							}
+							if(closestColor) break;
+						}
+						if(closestColor) {
+							imageData.data[index] = closestColor[0];
+							imageData.data[index + 1] = closestColor[1];
+							imageData.data[index + 2] = closestColor[2];
+							imageData.data[index + 3] = 1;
+						}
+					}
+				}
+			}
+		}
+		
 		// Force pixels around uncolored glyphs to white to prevent halo artifacts
 		for(let [rx, ry, rw, rh] of UncoloredRects)
 		{
 			await new Promise(r => requestAnimationFrame(r));
 			
+			// Loop through each pixel in the rect and set it to white
 			for(let x = rx; x < rx+rw; ++x)
 			{
 				for(let y = ry; y < ry+rh; ++y)
@@ -468,52 +568,65 @@ async function generateFontTextureSet(settings) {
 			}
 		}
 		
-		// await new Promise(r => requestAnimationFrame(r));
-		
-		// Force transparent pixels around glyphs to closest opaque pixel color to prevent halo artifacts
-		for(let [rx, ry, rw, rh] of ColorizedRects)
+		// Loop through each colourized rect and fill in fully transparent pixels with the closest opaque pixel
+		for(let [rx, ry, rw, rh] of UncoloredRects)
 		{
 			await new Promise(r => requestAnimationFrame(r));
 			
-			for(let x = rx; x < rx+rw - 1; ++x)
+			// Spiral out from current pixel to find closest opaque pixel for each transparent pixel
+			for(let x = rx; x < rx+rw; ++x)
 			{
-				for(let y = ry; y < ry+rh - 1; ++y)
+				for(let y = ry; y < ry+rh; ++y)
 				{
 					let index = (x + y * imageData.width) * 4;
-					const a = imageData.data[index + 3];
-					if(a > 0) continue;
-					
-					// Find closest opaque pixel
-					let found = false;
-					for(let radius = 1; radius < 3 && !found; ++radius)
+					if(imageData.data[index + 3] === 0)
 					{
-						for(let dx = -radius; dx <= radius && !found; ++dx)
-						{
-							for(let dy = -radius; dy <= radius && !found; ++dy)
-							{
-								if(dx == 0 && dy == 0) continue;
-								let sx = x + dx;
-								let sy = y + dy;
-								if(sx < 0 || sx >= canvas.width) continue;
-								if(sy < 0 || sy >= canvas.height) continue;
-								let sIndex = (sx + sy * imageData.width) * 4;
-								const sa = imageData.data[sIndex + 3];
-								if(sa === 255)
-								{
-									// Copy color
-									imageData.data[index + 0] = imageData.data[sIndex + 0];
-									imageData.data[index + 1] = imageData.data[sIndex + 1];
-									imageData.data[index + 2] = imageData.data[sIndex + 2];
-									found = true;
+						// Find closest opaque pixel by spiral search from current position
+						let closestColor = null;
+						for(let radius = 1; radius < 2; ++radius) {
+							for(let dx = -radius; dx <= radius; ++dx) {
+								for(let dy = -radius; dy <= radius; ++dy) {
+									if(Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+									const px = x + dx;
+									const py = y + dy;
+									if(px < 0 || px >= imageData.width || py < 0 || py >= imageData.height) continue;
+									const ci = (px + py * imageData.width) * 4;
+									if(imageData.data[ci + 3] === 255) {
+										closestColor = [imageData.data[ci], imageData.data[ci + 1], imageData.data[ci + 2]];
+										break;
+									}
 								}
+								if(closestColor) break;
 							}
+							if(closestColor) break;
+						}
+						if(closestColor) {
+							imageData.data[index] = closestColor[0];
+							imageData.data[index + 1] = closestColor[1];
+							imageData.data[index + 2] = closestColor[2];
+							imageData.data[index + 3] = 1;
 						}
 					}
 				}
 			}
 		}
 		
-		ctx.putImageData(imageData, 0, 0);
+		// Force any pixels that are black transparent to white transparent
+		for(let i = 0; i < imageData.data.length; i += 4)
+		{
+			if(imageData.data[i + 3] === 0)
+			{
+				imageData.data[i + 0] = 255;
+				imageData.data[i + 1] = 255;
+				imageData.data[i + 2] = 255;
+			}
+		}
+		
+		// ctx.putImageData(imageData, 0, 0);
+		
+		await new Promise(r => requestAnimationFrame(r));
+		
+		return imageData
 	}
 	
 	const texturesQueue = [];
@@ -541,6 +654,7 @@ async function generateFontTextureSet(settings) {
 		characters: allCharacters,
 		textures,
 		texturesQueue,
+		texturesChain: _renderTextureChain,
 		data,
 	};
 }
@@ -555,18 +669,20 @@ async function dataFromFontTextureSets(fonts) {
 	
 	for(let font of fonts)
 	{
-		const fontIndex = data.fonts.length;
+		const fontIndex = 1 + data.fonts.length;
 		const fontData = {
 			name: font.name,
 			type: font.type,
 			columns: font.columns,
 			rows: font.rows,
 			cellSize: font.cellSize,
+			fontSize: font.fontSize,
 		};
 		
 		if(font.type === 'proportional')
 		{
 			fontData.whitespace = FontMetrics[font.fontFamily].whitespace;
+			if(FontMetrics[font.fontFamily].kerning) fontData.kerning = FontMetrics[font.fontFamily].kerning;
 		}
 		
 		data.fonts.push(fontData);
@@ -577,6 +693,7 @@ async function dataFromFontTextureSets(fonts) {
 				uuid: '',
 				width: texture.width,
 				height: texture.height,
+				font: fontIndex,
 			});
 			textures.push(texture);
 		}
@@ -584,7 +701,7 @@ async function dataFromFontTextureSets(fonts) {
 		for(let character of font.characters)
 		{
 			const metrics = font.data[character];
-			const textureIndex = textures.indexOf(metrics.texture);
+			const textureIndex = 1 + textures.indexOf(metrics.texture);
 			if(font.type === 'fixed') data.characters[character] = [
 				fontIndex,
 				textureIndex,
@@ -635,10 +752,28 @@ local Data = {
 
 function generateNotecardFromData(data) {
 	return [
-		...data.fonts.map(item => 'Font' + JSON.stringify(item)),
+		...data.fonts.flatMap(item => {
+			let kerning = item.kerning;
+			delete item.kerning;
+			let items = ['Font' + JSON.stringify(item)];
+			if(kerning && Object.keys(kerning).length > 0)
+			{
+				let entries = Object.entries(kerning);
+				for(let i = 0; i < entries.length; i += 100)
+				{
+					let group = entries.slice(i, i + 100);
+					let kerningGroup = group.reduce((obj, [pair, value]) => {
+						obj[pair] = value;
+						return obj;
+					}, {});
+					items.push('Kerning' + JSON.stringify(kerningGroup));
+				}
+			}
+			return items;
+		}),
 		...data.textures.map(item => 'Texture' + JSON.stringify(item)),
 		...Object.entries(data.characters).map(([char, metrics]) => (
-			char + String.fromCodePoint(0xE000) + metrics.join(String.fromCodePoint(0xE001))
+			char + String.fromCodePoint(0xE000) + metrics.join(',')
 		)),
 	].join('\n');
 }
@@ -727,8 +862,8 @@ export default function Generator() {
 				<h1 class="title">Texture Generator</h1> — Work in Progress
 			</header>
 			<div class="assets">
-				{Object.values(State.Fonts).filter(font => font.value).map(font => (
-					<TexturesPreview font={font.value}/>
+				{Object.values(State.Fonts).filter(font => font.value).map((font, index) => (
+					<TexturesPreview fontIndex={1 + index} font={font.value}/>
 				))}
 				<FontsData/>
 				<DownloadAsZip/>
