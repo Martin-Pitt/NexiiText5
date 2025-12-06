@@ -113,13 +113,11 @@ function DownloadAsZip(props) {
 function TexturesPreview(props) {
 	const [sources, setSources] = useState([]);
 	const [isStillRendering, setRendering] = useState(false);
-	const [dataURL, setDataURL] = useState(null);
 	
 	useEffect(async () => {
 		if(!props.font)
 		{
 			setSources([]);
-			setDataURL(null);
 			return;
 		}
 		
@@ -134,45 +132,6 @@ function TexturesPreview(props) {
 			let link = URL.createObjectURL(blob);
 			urls.push(link);
 			setSources(urls.slice());
-			
-			let data = {
-				name: props.font.name,
-				type: props.font.type,
-				columns: props.font.columns,
-				rows: props.font.rows,
-				cellSize: props.font.cellSize,
-				textures: props.font.textures.map((tex, index) => ([
-					`<${props.font.name}.textures[${index}]>`,
-					tex.width,
-					tex.height,
-				])),
-				characters: {},
-			};
-			
-			for(let character of props.font.characters)
-			{
-				const metrics = props.font.data[character];
-				if(!metrics) continue;
-				
-				if(props.font.type === 'fixed') data.characters[character] = [
-					props.fontIndex,
-					1 + props.font.textures.indexOf(metrics.texture),
-					metrics.index,
-				];
-				else data.characters[character] = [
-					props.fontIndex,
-					1 + props.font.textures.indexOf(metrics.texture),
-					metrics.index,
-					metrics.width,
-					metrics.leftGap,
-					metrics.rightGap,
-				];
-			}
-			
-			const json = JSON.stringify(data);
-			blob = new Blob([json], { type: 'application/json' });
-			link = URL.createObjectURL(blob);
-			setDataURL({ link, blob });
 			
 			await new Promise(r => requestAnimationFrame(r));
 		}
@@ -199,11 +158,6 @@ function TexturesPreview(props) {
 				font: <code>{fontSize.toFixed(0)}px {fontFamily}</code><br/>
 				{characters.length} characters<br/>
 				{textures.length} textures<br/>
-				{dataURL && (<>
-					<a href={dataURL.link} target="_blank" class="download-metrics">
-						{(dataURL.blob.size/1024).toFixed(2)}KB Data
-					</a>
-				</>)}
 			</figcaption>
 			{sources.map(source => (
 				<div class="preview-container">
@@ -409,22 +363,6 @@ async function generateFontTextureSet(settings) {
 			
 			ctx.restore();
 			
-			
-			// Save metrics
-			ctx.font = fontBase;
-			let metrics = ctx.measureText(character);
-			ctx.font = font;
-			data[character] = {
-				texture: canvas,
-				index: 1 + index,
-				width: metrics.width, 
-				leftGap: 0,
-				rightGap: 0,
-				textureX: x - TextureSize/2,
-				textureY: 1 - ((y + cellSize/2) / TextureSize/2),
-			};
-			
-			
 			// Check if glyph is colorized/greyscale instead of black/white
 			let isColorized = false;
 			let rx = Math.floor(x - cellSize/2);
@@ -451,6 +389,23 @@ async function generateFontTextureSet(settings) {
 			
 			if(isColorized) ColorizedRects.push([ rx, ry, rw, rh ]);
 			else UncoloredRects.push([ rx, ry, rw, rh ]);
+			
+			
+			
+			// Save metrics
+			ctx.font = fontBase;
+			let metrics = ctx.measureText(character);
+			ctx.font = font;
+			data[character] = {
+				texture: canvas,
+				index: 1 + index,
+				width: metrics.width, 
+				leftGap: 0,
+				rightGap: 0,
+				textureX: x - TextureSize/2,
+				textureY: 1 - ((y + cellSize/2) / TextureSize/2),
+				color: isColorized,
+			};
 		}
 		
 		const GAP_MARGIN = 2;
@@ -654,6 +609,7 @@ async function generateFontTextureSet(settings) {
 		textures,
 		texturesQueue,
 		texturesChain: _renderTextureChain,
+		textureSize: TextureSize,
 		data,
 	};
 }
@@ -669,14 +625,8 @@ async function dataFromFontTextureSets(fonts) {
 	for(let font of fonts)
 	{
 		const fontIndex = 1 + data.fonts.length;
-		const fontData = {
-			name: font.name,
-			type: font.type,
-			columns: font.columns,
-			rows: font.rows,
-			cellSize: font.cellSize,
-			fontSize: font.fontSize,
-		};
+		const { name, type, columns, rows, cellSize, fontSize, textureSize } = font;
+		const fontData = { name, type, columns, rows, cellSize, fontSize, textureSize };
 		
 		if(font.type === 'proportional')
 		{
@@ -705,6 +655,7 @@ async function dataFromFontTextureSets(fonts) {
 				fontIndex,
 				textureIndex,
 				metrics.index,
+				metrics.color ? 1 : 0,
 			];
 			else data.characters[character] = [
 				fontIndex,
@@ -713,6 +664,7 @@ async function dataFromFontTextureSets(fonts) {
 				metrics.width,
 				metrics.leftGap,
 				metrics.rightGap,
+				metrics.color ? 1 : 0,
 			];
 		}
 	}
@@ -800,7 +752,7 @@ const State = {
 		backColor: 'transparent',
 		textColor: 'white',
 		type: 'proportional',
-		columns: 5,
+		columns: 4,
 		cellSize: TextureSize/12,
 	}),
 	EmojiSettings: signal({
