@@ -1,9 +1,24 @@
-local ctx = require("./NT5 Renderer.luau");
+local ctx = require("./NT5 Renderer.luau")
 
 ctx.position = vector(0,0,4)
-ctx.write("Hello, World 👋🌐!\nThis is a test of NexiiText5.")
-ctx.write("\nThe quick brown 🦊 jumps over the lazy 🐶.", { color = vector(1,0,0) })
-ctx.render();
+ctx.write("Helloooooooo")
+ctx.write("\n\nThe quick brown 🦊 yumps.", { color = vector(1,0,0) })
+local cluster = ctx.render()
+
+LLTimers:once(3.0, function()
+    -- Example of re-rendering a cluster
+    ctx.write("Hello, World 👋🌐!")
+    ctx.write("\n\nThe quic bro 🦊 yumps over lazy 🐶.", { color = vector(1,0,0) })
+    ctx.render(cluster)
+end)
+
+LLTimers:once(6.0, function()
+    -- Example of re-rendering a cluster
+    ctx.write("Hello, World 👋🌐!\nThis is a test of NexiiText5.")
+    ctx.write("\nThe quick brown 🦊 jumps over the lazy 🐶.", { color = vector(1,0,0) })
+    ctx.render(cluster)
+end)
+
 
 local markdownStyling = {
     text = { color = vector(1,1,1) },
@@ -20,6 +35,6 @@ ctx.markdown([[
 Learn more at: [martin-pitt.github.io/NexiiText5](https://martin-pitt.github.io/NexiiText5/)
 
 Enjoy using **NexiiText5**.
-]], markdownStyling);
+]], markdownStyling)
 
 ctx.render()

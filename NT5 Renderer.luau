@@ -44,15 +44,12 @@ type Texture = {
 }
 
 type Cluster = {
-	-- Identity
-	name: string?,
-	
 	-- Transform
 	pos: vector,
 	rot: quaternion,
 	
 	-- Content
-	islands: {Island | number},
+	islands: {Island},
 	caret: { x: number, y: number },
 	whitespace: number,
 }
@@ -79,6 +76,13 @@ type IslandFace = {
 	color: vector?, -- Specific face color
 }
 
+type RenderedCluster = {
+	name: string?,
+	pos: vector,
+	rot: quaternion,
+	links: {number},
+}
+
 
 
 -- Scan linkset
@@ -97,7 +101,7 @@ local function ScanLinkset(resetAll: boolean?)
 	ll.LinksetDataWrite("NT5_Free", free)
 	
 	local resetParams = {
-		PRIM_SIZE, vector(.01, .01, .01),
+		PRIM_SIZE, vector(.01,.01,.01),
 		PRIM_POS_LOCAL, vector.zero,
 		PRIM_ROT_LOCAL, quaternion(0,0,0,1),
 		PRIM_DESC, "Free",
@@ -114,6 +118,32 @@ local function ScanLinkset(resetAll: boolean?)
 end
 
 ScanLinkset()
+
+-- Linkset management
+function reservePrim(): number
+	local free = ll.LinksetDataRead("NT5_Free")
+	if #free == 0 then error("No free text prims available in linkset") end
+	local link = string.byte(free, 1, 1)
+	ll.LinksetDataWrite("NT5_Free", string.sub(free, 2))
+	return link
+end
+
+function releasePrim(link: number)
+	local free = ll.LinksetDataRead("NT5_Free")
+	free = string.char(link) .. free
+	ll.LinksetDataWrite("NT5_Free", free)
+	return {
+		PRIM_LINK_TARGET, link,
+		PRIM_SIZE, vector(.01,.01,.01),
+		PRIM_POS_LOCAL, vector.zero,
+		PRIM_ROT_LOCAL, quaternion(0,0,0,1),
+		PRIM_DESC, "Free",
+		PRIM_COLOR, ALL_SIDES, vector.one, 1,
+		PRIM_TEXTURE, ALL_SIDES, TEXTURE_TRANSPARENT, vector(1,1,0), vector(0,0,0), 0,
+	} :: {any}
+end
+
+
 
 
 function createTextCluster(obj: {any}?)
@@ -184,7 +214,17 @@ end
 -- Writes text into a virtual 2D canvas through a cluster of islands, each representing a mesh prim
 function write(text: string, styles: {[string]: any}?)
 	if text == "" then return end
-	if styles then for key, value in styles do Styling[key] = value end end
+	
+	-- Apply temporary styles
+	local prevStyles = nil
+	if styles then
+		prevStyles = {}
+		for key, value in styles do
+			prevStyles[key] = Styling[key]
+			Styling[key] = value
+		end
+	end
+	
 	if workingCluster == nil then
 		workingCluster = createTextCluster()
 		splitTextIsland(true)
@@ -410,25 +450,54 @@ function write(text: string, styles: {[string]: any}?)
 	
 	workingCluster.whitespace = whitespace
 	
+	-- Reset to original styles
+	if prevStyles then
+		for key, value in prevStyles do
+			Styling[key] = value
+		end
+	end
+	
 	return workingCluster
 end
 
 
-function render(cluster: TextCluster?)
-	if cluster == nil then cluster = workingCluster end
+function render(renderedCluster: RenderedCluster?)
+	-- if cluster == nil then cluster = workingCluster end
 	
-	if #cluster.islands[#cluster.islands].faces == 0 then table.remove(cluster.islands, #cluster.islands) end
+	-- Remove last island if empty
+	if #workingCluster.islands[#workingCluster.islands].faces == 0 then table.remove(workingCluster.islands, #workingCluster.islands) end
 	
+	if renderedCluster then
+		-- Reuse existing cluster position and rotation
+		workingCluster.pos = renderedCluster.pos
+		workingCluster.rot = renderedCluster.rot
+	end
+	local linksetNumbers: {number} = if renderedCluster then renderedCluster.links else table.create(#workingCluster.islands, nil)
 	local params: {any} = {}
 	
-	for _, island in (cluster :: Cluster).islands do
-		local free = ll.LinksetDataRead("NT5_Free")
-		if #free == 0 then error("No free text prims available in linkset") end
-		local link = string.byte(free, 1, 1)
-		ll.LinksetDataWrite("NT5_Free", string.sub(free, 2))
+	-- Release any excess linkset numbers in reverse order with table.remove
+	for index = #linksetNumbers, #workingCluster.islands + 1, -1 do
+		local releaseParams = releasePrim(linksetNumbers[index])
+		for _, param in releaseParams do table.insert(params, param) end
+		print(`Releasing prim {linksetNumbers[index]} from excess island {index}`)
+		table.remove(linksetNumbers, index)
+	end
+	
+	for index, island in workingCluster.islands do
+		if linksetNumbers[index] then -- Reuse existing prim
+			local resetParams = {
+				PRIM_LINK_TARGET, linksetNumbers[index],
+				PRIM_COLOR, ALL_SIDES, vector.one, 1,
+				PRIM_TEXTURE, ALL_SIDES, TEXTURE_TRANSPARENT, vector(1,1,0), vector(0,0,0), 0,
+			} :: {any}
+			for _, param in resetParams do table.insert(params, param) end
+			print(`Reusing prim {linksetNumbers[index]} for island {index}`)
+		else -- Reserve fresh prim
+			linksetNumbers[index] = reservePrim()
+			table.insert(params, PRIM_LINK_TARGET)
+			table.insert(params, linksetNumbers[index])
+		end
 		
-		table.insert(params, PRIM_LINK_TARGET)
-		table.insert(params, link)
 		-- table.insert(params, PRIM_DESC)
 		-- table.insert(params, "Text")
 		
@@ -533,10 +602,18 @@ function render(cluster: TextCluster?)
 	
 	ll.SetLinkPrimitiveParamsFast(0, params)
 	
+	local renderedCluster: RenderedCluster = {
+		pos = workingCluster.pos,
+		rot = workingCluster.rot,
+		links = linksetNumbers,
+	}
+	
 	resume.caret = workingCluster.caret
 	resume.whitespace = workingCluster.whitespace
 	workingCluster = nil
 	workingIsland = nil
+	
+	return renderedCluster
 end
 
 function markdown(text: string, styles: {[string]: any})
