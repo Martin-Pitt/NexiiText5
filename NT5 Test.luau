@@ -21,7 +21,7 @@ local Styling = {
 local activeFont = Fonts[1]
 local workingCluster: Cluster = nil
 local workingIsland: Island = nil
-
+local resume = { caret = { x = 0, y = 0 }, whitespace = 0 }
 
 type Font = {
     type: "proportional" | "fixed",
@@ -31,6 +31,7 @@ type Font = {
     cellSize: number,
     fontSize: number,
     textureSize: number,
+    textureCount: number,
     
     -- Proportional
     whitespace: {[string]: number},
@@ -203,11 +204,31 @@ function write(text: string, cluster: Cluster?)
     repeat
         local codepoint = table.remove(codepoints, 1)
         local char = utf8.char(codepoint)
+        local nextChar = nil
+        if #codepoints > 0 then nextChar = utf8.char(codepoints[1]) end
         
         if activeFont.type == 'proportional' and activeFont.whitespace[char] then
             whitespace += activeFont.whitespace[char]
         elseif activeFont.type == 'fixed' and char == " " then -- TODO: Force other whitespace to fixed width as well?
-            whitespace += FontFixedUnit
+            -- Lookahead for proportional font switch
+            local switchedToProportional = false
+            if nextChar then
+                local nextMetrics = ll.LinksetDataRead("NT5_" .. nextChar)
+                if nextMetrics ~= "" then
+                    local fontIndex = table.unpack(lljson.decode(`[{nextMetrics}]`) :: {number})
+                    local nextFont = Fonts[fontIndex]
+                    if nextFont.name ~= activeFont.name and nextFont.type == 'proportional' then
+                        activeFont = nextFont
+                        whitespace += nextFont.whitespace[" "]
+                        workingCluster.caret.x += whitespace
+                        splitTextIsland()
+                        whitespace = 0
+                        switchedToProportional = true
+                    end
+                end
+            end
+            
+            if not switchedToProportional then whitespace += FontFixedUnit end
         elseif char == "\t" then -- Tab indentation
             if newlines > 0 then
                 workingCluster.caret.x = 0
@@ -230,7 +251,14 @@ function write(text: string, cluster: Cluster?)
                 char = "�" -- Fallback
                 metrics = ll.LinksetDataRead("NT5_" .. char)
             end
-            local fontIndex, textureIndex, charIndex, glyphWidth, leftGap, rightGap = table.unpack(lljson.decode(`[{metrics}]`) :: {number})
+            metrics = lljson.decode(`[{metrics}]`) :: {number}
+            local fontIndex: number = metrics[1]
+            local textureIndex: number = metrics[2]
+            local charIndex: number = metrics[3]
+            local glyphWidth: number
+            local leftGap: number
+            local rightGap: number
+            local isColor: boolean
             
             if Fonts[fontIndex].name ~= activeFont.name then
                 local prevFont = activeFont
@@ -242,17 +270,27 @@ function write(text: string, cluster: Cluster?)
                 end
             end
             
+            if activeFont.type == 'proportional' then
+                glyphWidth = metrics[4]
+                leftGap = metrics[5] - FontBaseUnit*.5
+                rightGap = metrics[6] - FontBaseUnit*.5
+                isColor = metrics[7] == 1 and true or false
+            elseif activeFont.type == 'fixed' then
+                isColor = metrics[4] == 1 and true or false
+            end
+            
             if workingIsland.type == 'proportional' then
-                if prevChar then
-                    local pair = prevChar .. char
-                    if activeFont.kerning[pair] then
-                        glyphWidth += activeFont.kerning[pair]
-                    end
-                end
+                local kerningAdjustment = 0
+                -- if prevChar then
+                --     local pair = prevChar .. char
+                --     if activeFont.kerning[pair] then
+                --         kerningAdjustment = activeFont.kerning[pair]
+                --     end
+                -- end
                 
                 glyphWidth *= (activeFont.fontSize/activeFont.cellSize)
                 
-                local addedWidth = whitespace + glyphWidth
+                local addedWidth = whitespace + kerningAdjustment*.5 + glyphWidth
                 local islandEnd = workingCluster.caret.x - workingIsland.x
                 
                 local outOfFaces = #workingIsland.faces >= 8
@@ -287,13 +325,16 @@ function write(text: string, cluster: Cluster?)
                 local columnWidth = activeFont.textureSize / activeFont.columns
                 local x = (columnWidth*.5 + columnWidth * ((charIndex - 1) % activeFont.columns))
                 local y = activeFont.cellSize * math.floor((charIndex - 1) / activeFont.columns)
-                local pos = (islandEnd + whitespace + glyphWidth*.5) * (activeFont.cellSize/FontBaseUnit)
+                local pos = (islandEnd + whitespace + kerningAdjustment + glyphWidth*.5) * (activeFont.cellSize/FontBaseUnit)
                 local face = {
                     t = textureIndex,
                     u = x - texture.width/2 - pos,
                     v = 1 - ((y - activeFont.cellSize/2) - texture.height/2),
                 } :: IslandFace
-                if Styling.color ~= vector.one or workingIsland.color ~= Styling.color then face.color = Styling.color end
+                if Styling.color ~= vector.one or workingIsland.color ~= Styling.color then
+                    face.color = Styling.color
+                    if isColor then face.color = vector.one end
+                end
                 table.insert(workingIsland.faces, face)
                 
                 newlines = 0
@@ -337,7 +378,10 @@ function write(text: string, cluster: Cluster?)
                     u = x - texture.width/2,
                     v = 1 - ((y - activeFont.cellSize/2) - texture.height/2),
                 } :: IslandFace
-                if Styling.color ~= vector.one or workingIsland.color ~= Styling.color then face.color = Styling.color end
+                if Styling.color ~= vector.one or workingIsland.color ~= Styling.color then
+                    face.color = Styling.color
+                    if isColor then face.color = vector.one end
+                end
                 table.insert(workingIsland.faces, face)
                 
                 newlines = 0
@@ -446,7 +490,7 @@ function render(cluster: TextCluster?)
             table.insert(params, PRIM_POS_LOCAL)
             table.insert(params, workingCluster.pos + pos)
             table.insert(params, PRIM_ROT_LOCAL)
-            table.insert(params, quaternion(0,0,-1,0) *workingCluster.rot)
+            table.insert(params, quaternion(0,0,-1,0) * workingCluster.rot)
             table.insert(params, PRIM_SIZE)
             table.insert(params, vector(
                 0.01,
@@ -465,7 +509,7 @@ function render(cluster: TextCluster?)
             table.insert(params, PRIM_POS_LOCAL)
             table.insert(params, workingCluster.pos + pos)
             table.insert(params, PRIM_ROT_LOCAL)
-            table.insert(params, quaternion(0,0,.70711,.70711) *workingCluster.rot)
+            table.insert(params, quaternion(0,0,.70711,.70711) * workingCluster.rot)
             table.insert(params, PRIM_SIZE)
             table.insert(params, vector(
                 (FontFixedUnit*8) / FontBaseUnit * island.fontSize,
@@ -477,45 +521,58 @@ function render(cluster: TextCluster?)
     
     ll.SetLinkPrimitiveParamsFast(0, params)
     
+    resume.caret = workingCluster.caret
+    resume.whitespace = workingCluster.whitespace
     workingCluster = nil
     workingIsland = nil
 end
 
+
 Styling.position = vector(0,0,4)
 write("Hello, World 👋🌐!\nThis is a test of NexiiText5.")
 Styling.color = vector(1,0,0)
-write("\nThe quick brown ")
-Styling.color = vector(1,1,1)
-write("🦊")
-Styling.color = vector(1,0,0)
-write(" jumps over the lazy ")
-Styling.color = vector(1,1,1)
-write("🐶")
-Styling.color = vector(1,0,0)
-write(".\n0123456789")
+write("\nThe quick brown 🦊 jumps over the lazy 🐶.\n0123456789")
 render()
 
 LLTimers:once(2.0, function(scheduled_time)
     Styling.position = vector(0,0,3)
     Styling.color = vector(.5,1,.5)
-    write("Another text cluster,\ncreated after 2 seconds!")
-    Styling.color = vector(1,1,1)
-    write(" 🔥🔥🔥")
-    render()
+    render(write("Another text cluster,\ncreated after 2 seconds! 🔥🔥🔥"))
 end)
 
--- LLTimers:once(0.5, function(scheduled_time)
+
+LLTimers:once(2.5, function(scheduled_time)
     Styling.position = vector(0,0,2)
     Styling.color = vector(1,1,1); write("Fonts are ")
-    Styling.color = vector(.7,.7,1); write("proportional")
-    Styling.color = vector(1,1,1); write(" ↔ and ")
-    Styling.color = vector(.7,.7,1); write("fixed-width")
-    Styling.color = vector(1,1,1); write(" ⬜,\nwith ")
+    Styling.color = vector(.7,.7,1); write("proportional ↔")
+    render()
+end)
+LLTimers:once(3.5, function(scheduled_time)
+    workingCluster = createTextCluster(resume)
+    Styling.color = vector(1,1,1); write(" and ")
+    Styling.color = vector(.7,.7,1); write("fixed-width ⬜")
+    render()
+end)
+LLTimers:once(4.5, function(scheduled_time)
+    workingCluster = createTextCluster(resume)
+    Styling.color = vector(1,1,1); write(",\nwith ")
     Styling.color = vector(.7,.7,1); write("kerning")
-    Styling.color = vector(1,1,1); write(" (To, Ve, LY, YA, etc) and ")
+    Styling.color = vector(1,1,1); write(" (To, Ve, LY, YA, etc)")
+    render()
+end)
+LLTimers:once(5.0, function(scheduled_time)
+    workingCluster = createTextCluster(resume)
+    write(" and ")
     Styling.color = vector(.7,.7,1); write("word-wrapping")
-    Styling.color = vector(1,1,1); write("!\n\nEnjoy using ")
+    Styling.color = vector(1,1,1); write("!")
+    render()
+end)
+LLTimers:once(7.0, function(scheduled_time)
+    workingCluster = createTextCluster(resume)
+    write("\n\nEnjoy using ")
     Styling.color = vector(.7,.7,1); write("NexiiText5")
     Styling.color = vector(1,1,1); write(".")
     render()
--- end)
+end)
+
+LLEvents:on("on_rez", function() ll.ResetScript() end)

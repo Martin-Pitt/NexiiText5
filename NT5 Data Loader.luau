@@ -1,4 +1,4 @@
-local Notecard = uuid("055da5a2-acae-6d84-d2cb-edc23bde8084")
+local Notecard = uuid("087a99f6-5c48-5942-0652-89e4f4185b90")
 
 local Fonts = {}
 local Textures = {}
@@ -47,6 +47,28 @@ function readNotecardLines()
         
         index += 1
     until index > count
+    
+    local needsTextureKeys = false
+    local pointer = 1;
+    for fontIndex, font in Fonts do
+        for textureIndex=0,font.textureCount-1 do
+            local texture = Textures[pointer]
+            if texture.uuid == "" or texture.uuid == uuid(NULL_KEY) then
+                needsTextureKeys = true
+                local textureName = `NT5_Texture_{font.name}_{textureIndex}`
+                local textureKey = ll.GetInventoryKey(textureName)
+                if textureKey == "" or textureKey == uuid(NULL_KEY) then print(`Unabled to find texture {textureName}`) end
+                texture.uuid = textureKey
+                print(`Texture\{"uuid":"{textureKey}","width":{texture.width},"height":{texture.height},"font":{fontIndex}\}`)
+            end
+            pointer += 1
+        end
+    end
+    
+    if needsTextureKeys then
+        print("Update the notecard with the texture keys")
+        return
+    end
     
     ll.LinksetDataWrite("NT5_Fonts", lljson.encode(Fonts))
     ll.LinksetDataWrite("NT5_Textures", lljson.encode(Textures))
