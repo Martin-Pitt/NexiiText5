@@ -610,6 +610,7 @@ async function generateFontTextureSet(settings) {
 		texturesQueue,
 		texturesChain: _renderTextureChain,
 		textureSize: TextureSize,
+		textureCount: textures.length,
 		data,
 	};
 }
@@ -625,8 +626,8 @@ async function dataFromFontTextureSets(fonts) {
 	for(let font of fonts)
 	{
 		const fontIndex = 1 + data.fonts.length;
-		const { name, type, columns, rows, cellSize, fontSize, textures, textureSize } = font;
-		const fontData = { name, type, columns, rows, cellSize, fontSize, textureSize, textureCount: textures.length };
+		const { name, type, columns, rows, cellSize, fontSize, textureSize, textureCount } = font;
+		const fontData = { name, type, columns, rows, cellSize, fontSize, textureSize, textureCount };
 		
 		if(font.type === 'proportional')
 		{
