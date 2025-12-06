@@ -76,7 +76,7 @@ type IslandFace = {
 	color: vector?, -- Specific face color
 }
 
-type RenderedCluster = {
+export type RenderedCluster = {
 	name: string?,
 	pos: vector,
 	rot: quaternion,
@@ -461,7 +461,7 @@ function write(text: string, styles: {[string]: any}?)
 end
 
 
-function render(renderedCluster: RenderedCluster?)
+function render(renderedCluster: RenderedCluster?): RenderedCluster
 	-- if cluster == nil then cluster = workingCluster end
 	
 	-- Remove last island if empty

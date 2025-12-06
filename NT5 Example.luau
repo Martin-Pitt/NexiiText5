@@ -1,9 +1,11 @@
 local ctx = require("./NT5 Renderer.luau")
 
+-- Example of basic text rendering
 ctx.position = vector(0,0,4)
 ctx.write("Helloooooooo")
 ctx.write("\n\nThe quick brown 🦊 yumps.", { color = vector(1,0,0) })
 local cluster = ctx.render()
+
 
 -- Example of re-rendering a cluster later with updated content
 LLTimers:once(3.0, function()
