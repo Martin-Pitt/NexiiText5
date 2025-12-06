@@ -625,8 +625,8 @@ async function dataFromFontTextureSets(fonts) {
 	for(let font of fonts)
 	{
 		const fontIndex = 1 + data.fonts.length;
-		const { name, type, columns, rows, cellSize, fontSize, textureSize } = font;
-		const fontData = { name, type, columns, rows, cellSize, fontSize, textureSize };
+		const { name, type, columns, rows, cellSize, fontSize, textures, textureSize } = font;
+		const fontData = { name, type, columns, rows, cellSize, fontSize, textureSize, textureCount: textures.length };
 		
 		if(font.type === 'proportional')
 		{
