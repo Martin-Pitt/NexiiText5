@@ -185,6 +185,7 @@ end
 
 -- Writes text into a virtual 2D canvas through a cluster of islands, each representing a mesh prim
 function write(text: string, styles: {[string]: any}?)
+    if text == "" then return end
     if styles then for key, value in styles do Styling[key] = value end end
     if workingCluster == nil then
         workingCluster = createTextCluster()
