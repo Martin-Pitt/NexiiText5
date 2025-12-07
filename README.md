@@ -35,7 +35,6 @@ The function `ctx.render` returns a **Rendered Cluster**, these can be used to r
 To optimise script memory usage, the renderer relies on _Linkset Data_ for a lot of stored information on fonts, textures, whitespace and kerning.
 
 
-
 ## API
 
 Require the renderer:
@@ -180,6 +179,19 @@ Customising the web app's generator can allow you to change the fonts, texture a
     - Might be able to get away with only adding bold and italic variants for main ASCII set
     - Hook into the markdown parser
     - Add as boolean styling options, e.g. `ctx.bold = true` / `{ italic = true }`
+
+
+
+## Mesh
+
+![](/screenshot-mesh.png)
+
+The mesh can be used for proportional and fixed-width rendering by the text renderer, shown respectively left to right in the image - the top layer is how it is used in practice flattened down but the lower layer betrays the actual geometry which consists of angled faces to achieve the dual-rendering usage from the same mesh.
+
+The source files are available at:
+- [Blender source: `NT5 Text Mesh.blend`](./NT5%20Text%20Mesh.blend)
+- [GLB file uploaded to SL: `NT5 Text Mesh.glb`](./NT5%20Text%20Mesh.glb)
+
 
 
 
