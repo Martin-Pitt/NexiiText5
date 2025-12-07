@@ -6,12 +6,18 @@ NexiiText5 is a text rendering library for Second Life scripters written in SLua
 
 ## Quickstart
 
+## Prefab
+You can get free prefabricated object with example script, 64 mesh text prims in the linkset and the linkset data preloaded from the loader script available here:
+
+> https://marketplace.secondlife.com/p/NexiiText5/27772073
+
+## Manual
+
+Here is how to manually put together an object for text rendering:
 1. Link as many Text mesh prim onto your object as you may expect to need, roughly around one text mesh per 3-7 letters
 2. Drop the [`N5 Data Loader.luau`](./NT5%20Data%20Loader.luau) script into the object, this loads a notecard which then stores information for fonts into Linkset Data (currently around 50KB) and then self-deletes the loader script automatically when it is finished
 3. `require(...)` the [`N5 Renderer.luau`](./NT5%20Renderer.luau) library in your project
 4. The library gives you a rendering context table object which has certain methods like `write`, `render` etc. and you can also apply global styling information like `position`, `fontSize` etc.
-
-> (TODO: Add link to marketplace with examples, scripts and text mesh prim)
 
 
 ## About
