@@ -3,17 +3,17 @@
 ## Quickstart
 
 1. Link as many Text mesh prim onto your object as you may expect to need, roughly around one text mesh per 3-7 letters
-2. Drop the [`N5 Data Loader.luau`](./N5 Data Loader.luau) script into the object, this loads a notecard which then stores information for fonts into Linkset Data (currently around 50KB)
-3. `require(...)` the [`N5 Renderer.luau`](./N5 Renderer.luau) library in your project
+2. Drop the [`N5 Data Loader.luau`](./NT5%20Data%20Loader.luau) script into the object, this loads a notecard which then stores information for fonts into Linkset Data (currently around 50KB) and then self-deletes the loader script automatically when it is finished
+3. `require(...)` the [`N5 Renderer.luau`](./NT5%20Renderer.luau) library in your project
 4. The library gives you a rendering context table object which has certain methods like `write`, `render` etc. and you can also apply global styling information like `position`, `fontSize` etc.
 
-(TODO: Add link to marketplace with examples, scripts and text mesh prim)
+> (TODO: Add link to marketplace with examples, scripts and text mesh prim)
 
 
 ## About
 NexiiText5 is a text rendering library for Second Life scripters written in SLua.
 
-It provides high quality text rendering in-world, featuring *letter spacing*, *kerning* and *text wrap*, of unicode characters using generated texture atlases.
+Providing high quality text rendering in-world, featuring *letter spacing*, *kerning* and *text wrap*, of unicode characters using generated texture atlases. It can render text proportionally or as fixed-width fonts (such as for emojis and CJK).
 
 The renderer works in two phases:
 1. Writing text into a virtual 2D canvas (`ctx.write`)
@@ -30,6 +30,7 @@ It also uses some specific terminology for its data structures:
 The function `ctx.render` returns a **Rendered Cluster**, these can be used to re-render a cluster later on or move it around as you need.
 
 To optimise script memory usage, the renderer relies on _Linkset Data_ for a lot of stored information on fonts, textures, whitespace and kerning.
+
 
 
 ## API
@@ -68,8 +69,8 @@ There is a very limited amount of markdown supported in the form of:
 - Blockquotes - `> Blockquote`
 - Lists - `[text](link)`
 
-The renderer and font doesnt currently support actual bold, italic or interactive links however and there are no default styles setup.
-So you are free to style the markdown as you wish from the available styling options.
+Currently the renderer/font does not have actual **bold**, _italic_ or [interactive links](https://example.com).
+So you are free to style the markdown as you wish from the available styling options to give your own meaning to them, usually some color for bold/italic and font sizes for headings.
 
 
 ### Styles
@@ -135,6 +136,49 @@ This is nice for **multi-line** strings such as for **markdown**.
 ```
 
 
-## Known Issues
+## Texture Generator
 
+This repo also includes a web app (in [`./texture-generator`](./texture-generator/)) which creates the landing page at https://martin-pitt.github.io/NexiiText5/ but it also has a font texture/data generator which creates the font dataset for the text renderer.
+
+### Downloading the generated fonts and data
+
+1. Go to the texture generator at https://martin-pitt.github.io/NexiiText5/generator
+2. Wait until everything has finished generating
+3. Download the packaged assets archive zip
+4. Extract the archive into a folder
+5. Bulk upload all the textures
+6. Copy-paste the `NT5_Data.txt` into a new notecard
+7. Copy the UUID of the notecard and paste it into a new [`NT5 Data Loader`](./NT5%20Data%20Loader.luau) script in your inventory, replacing the UUID at the top with the one from your notecard
+8. Drop the loader into a test object
+9. The loader will spit out lines you can replace the `Texture{...}` lines of the notecard with, make sure to match exactly the same order
+10. Replace the notecard UUID of the loader script that is in your inventory to finalise it
+
+You now have a working NT5 Data Loader with custom fonts and data that you can apply to objects like the quickstart instructions.
+
+
+### Developing web app
+
+Customising the web app's generator can allow you to change the fonts, texture atlases and unicode characters you want to support. Although only limited support will be provided as the project is still fairly new and dynamic.
+
+1. Git clone the repository
+2. Run `npm install` in the `./texture-generator` folder
+3. Run `npm run dev` to start the local development server
+4. Edit the [`./texture-generator/src/pages/Generator.jsx`](./texture-generator/src/pages/Generator.jsx) file per your needs
+
+
+
+## Wishlist
+- Texture Generator configuration
+    - Some way for users of the web app to create/configure/delete font sets & change unicode character ranges within the web app
+    - Save configurations locally into `localStorage` and offer a way to save/load configs to/from a file just in case for sharing
+- Optimise the performance of the texture generator
+    - It is painfully slow and if configurations are added this will need to go way faster or be generated on-demand
+- Add support for **Bold** and/or _Italic_ styling into the renderer
+    - Might be able to get away with only adding bold and italic variants for main ASCII set
+    - Hook into the markdown parser
+    - Add as boolean styling options, e.g. `ctx.bold = true` / `{ italic = true }`
+
+
+
+## Known Issues
 - Newline at end of write call may get ignored
