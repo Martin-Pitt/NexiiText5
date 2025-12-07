@@ -11,6 +11,9 @@ export default function Landing() {
 			<a class="link" target="_blank" href="https://github.com/Martin-Pitt/NexiiText5">
 				<svg class="favicon"><use href="#favicon-github"/></svg>GitHub repo
 			</a>
+			<a class="link" target="_blank" href="https://github.com/Martin-Pitt/NexiiText5?tab=readme-ov-file#api">
+				<svg class="favicon"><use href="#favicon-github"/></svg>API documentation
+			</a>
 			<a class="link" href="/NexiiText5/generator">Texture Generator</a>
 		</div>
 	)
