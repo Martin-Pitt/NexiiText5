@@ -1,5 +1,9 @@
 # NexiiText5
 
+NexiiText5 is a text rendering library for Second Life scripters written in SLua
+
+![](/screenshot-header.png)
+
 ## Quickstart
 
 1. Link as many Text mesh prim onto your object as you may expect to need, roughly around one text mesh per 3-7 letters
@@ -11,7 +15,6 @@
 
 
 ## About
-NexiiText5 is a text rendering library for Second Life scripters written in SLua.
 
 Providing high quality text rendering in-world, featuring *letter spacing*, *kerning* and *text wrap*, of unicode characters using generated texture atlases. It can render text proportionally or as fixed-width fonts (such as for emojis and CJK).
 
