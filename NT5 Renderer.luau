@@ -456,8 +456,6 @@ function write(text: string, styles: {[string]: any}?)
 			Styling[key] = value
 		end
 	end
-	
-	return workingCluster
 end
 
 
