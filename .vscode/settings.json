@@ -1,10 +1,10 @@
 {
 	"selene.warnRoblox": false,
 	"luau-lsp.types.definitionFiles": {
-		"sl-slua": "/Users/nexii/Projects/SecondLife/NexiiText5/.vscode/sl-vscode-plugin/slua_default.d.luau"
+		"sl-slua": "d:\\Second Life\\LSL\\NexiiText5\\.vscode\\sl-vscode-plugin\\slua_default.d.luau"
 	},
 	"luau-lsp.types.documentationFiles": [
-		"/Users/nexii/Projects/SecondLife/NexiiText5/.vscode/sl-vscode-plugin/slua_default.docs.json"
+		"d:\\Second Life\\LSL\\NexiiText5\\.vscode\\sl-vscode-plugin\\slua_default.docs.json"
 	],
 	"luau-lsp.platform.type": "standard",
 	"luau-lsp.sourcemap.enabled": false
