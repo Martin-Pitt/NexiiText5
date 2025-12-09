@@ -80,6 +80,8 @@ export type RenderedCluster = {
 	name: string?,
 	pos: vector,
 	rot: quaternion,
+	width: number,
+	height: number,
 	links: {number},
 }
 
@@ -128,10 +130,8 @@ function reservePrim(): number
 	return link
 end
 
-function releasePrim(link: number)
-	local free = ll.LinksetDataRead("NT5_Free")
-	free = string.char(link) .. free
-	ll.LinksetDataWrite("NT5_Free", free)
+function releasePrim(link: number): {any}
+	ll.LinksetDataWrite("NT5_Free", string.char(link) .. ll.LinksetDataRead("NT5_Free"))
 	return {
 		PRIM_LINK_TARGET, link,
 		PRIM_SIZE, vector(.01,.01,.01),
@@ -480,18 +480,19 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 		table.remove(linksetNumbers, index)
 	end
 	
-	for index, island in workingCluster.islands do
-		if linksetNumbers[index] then -- Reuse existing prim
+	local top, bottom, left, right = 0, 0, 0, 0
+	for islandIndex, island in workingCluster.islands do
+		if linksetNumbers[islandIndex] then -- Reuse existing prim
 			local resetParams = {
-				PRIM_LINK_TARGET, linksetNumbers[index],
+				PRIM_LINK_TARGET, linksetNumbers[islandIndex],
 				PRIM_COLOR, ALL_SIDES, vector.one, 1,
 				PRIM_TEXTURE, ALL_SIDES, TEXTURE_TRANSPARENT, vector(1,1,0), vector(0,0,0), 0,
 			} :: {any}
 			for _, param in resetParams do table.insert(params, param) end
 		else -- Reserve fresh prim
-			linksetNumbers[index] = reservePrim()
+			linksetNumbers[islandIndex] = reservePrim()
 			table.insert(params, PRIM_LINK_TARGET)
-			table.insert(params, linksetNumbers[index])
+			table.insert(params, linksetNumbers[islandIndex])
 		end
 		
 		-- table.insert(params, PRIM_DESC)
@@ -509,7 +510,7 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 			if island.width < minimumSize then island.width = minimumSize end -- Minimum prim size
 		end
 		
-		for index, face in island.faces do
+		for faceIndex, face in island.faces do
 			local texture = Textures[face.t]
 			local islandWidth = 0
 			local repeats, coords
@@ -543,12 +544,12 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 			
 			if face.color then
 				table.insert(params, PRIM_COLOR)
-				table.insert(params, index - 1)
+				table.insert(params, faceIndex - 1)
 				table.insert(params, face.color)
 				table.insert(params, 1)
 			end
 			table.insert(params, PRIM_TEXTURE)
-			table.insert(params, index - 1)
+			table.insert(params, faceIndex - 1)
 			table.insert(params, texture.uuid)
 			table.insert(params, repeats)
 			table.insert(params, coords)
@@ -561,6 +562,16 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 				(island.x + island.width*.5) * (island.fontSize/FontBaseUnit),
 				island.y * (island.fontSize/FontBaseUnit) -- + island.fontSize * 0.25
 			)
+			local size = vector(
+				0.01,
+				island.width / FontBaseUnit * island.fontSize,
+				island.fontSize
+			)
+			
+			left = math.min(left, pos.y)
+			right = math.max(right, pos.y + size.y)
+			top = math.max(top, pos.z)
+			bottom = math.min(bottom, pos.z - size.z)
 			
 			pos *= workingCluster.rot
 			
@@ -569,17 +580,23 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 			table.insert(params, PRIM_ROT_LOCAL)
 			table.insert(params, quaternion(0,0,-1,0) * workingCluster.rot)
 			table.insert(params, PRIM_SIZE)
-			table.insert(params, vector(
-				0.01,
-				island.width / FontBaseUnit * island.fontSize,
-				island.fontSize
-			))
+			table.insert(params, size)
 		elseif island.type == "fixed" then
 			local pos = vector(
 				0,
 				(island.x + FontFixedUnit*4) * (island.fontSize/FontBaseUnit),
 				island.y * (island.fontSize/FontBaseUnit) -- + island.fontSize * 0.25
 			)
+			local size = vector(
+				(FontFixedUnit*8) / FontBaseUnit * island.fontSize,
+				0.01,
+				island.fontSize
+			)
+			
+			left = math.min(left, pos.x)
+			right = math.max(right, pos.x + size.x)
+			top = math.max(top, pos.z)
+			bottom = math.min(bottom, pos.z - size.z)
 			
 			pos *= workingCluster.rot
 			
@@ -588,11 +605,7 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 			table.insert(params, PRIM_ROT_LOCAL)
 			table.insert(params, quaternion(0,0,.70711,.70711) * workingCluster.rot)
 			table.insert(params, PRIM_SIZE)
-			table.insert(params, vector(
-				(FontFixedUnit*8) / FontBaseUnit * island.fontSize,
-				0.01,
-				island.fontSize
-			))
+			table.insert(params, size)
 		end
 	end
 	
@@ -601,6 +614,8 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 	local renderedCluster: RenderedCluster = {
 		pos = workingCluster.pos,
 		rot = workingCluster.rot,
+		width = right - left,
+		height = top - bottom,
 		links = linksetNumbers,
 	}
 	
@@ -674,6 +689,14 @@ local TextRenderingContext = setmetatable({
 	render = render,
 	resume = function() workingCluster = createTextCluster(resume) end,
 	markdown = markdown,
+	release = function(cluster: RenderedCluster)
+		local params = {}
+		for _, link in cluster.links do
+			local releaseParams = releasePrim(link)
+			for _, param in releaseParams do table.insert(params, param) end
+		end
+		ll.SetLinkPrimitiveParamsFast(0, params)
+	end,
 }, {
 	__index = Styling,
 	__newindex = Styling,
