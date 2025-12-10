@@ -413,7 +413,7 @@ local function write(text: string, styles: {[string]: any}?)
 				local texture = Textures[textureIndex]
 				workingCluster.caret.x += addedWidth
 				
-				for step = 0, whitespace, FontFixedUnit do
+				for _ = 0, whitespace, FontFixedUnit do
 					local emptyFace = nil
 					table.insert(workingIsland.faces, emptyFace)
 				end
@@ -609,20 +609,20 @@ local function render(renderedCluster: RenderedCluster?): RenderedCluster
 	
 	ll.SetLinkPrimitiveParamsFast(0, params)
 	
-	local renderedCluster: RenderedCluster = {
+	renderedCluster = {
 		pos = workingCluster.pos,
 		rot = workingCluster.rot,
 		width = right - left,
 		height = top - bottom,
 		links = linksetNumbers,
-	}
+	} :: RenderedCluster
 	
 	resume.caret = workingCluster.caret
 	resume.whitespace = workingCluster.whitespace
 	workingCluster = nil
 	workingIsland = nil
 	
-	return renderedCluster
+	return renderedCluster :: RenderedCluster
 end
 
 local function markdown(text: string, styles: {[string]: any})
