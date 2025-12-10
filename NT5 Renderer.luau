@@ -122,7 +122,7 @@ end
 ScanLinkset()
 
 -- Linkset management
-function reservePrim(): number
+local function reservePrim(): number
 	local free = ll.LinksetDataRead("NT5_Free")
 	if #free == 0 then error("No free text prims available in linkset") end
 	local link = string.byte(free, 1, 1)
@@ -130,7 +130,7 @@ function reservePrim(): number
 	return link
 end
 
-function releasePrim(link: number): {any}
+local function releasePrim(link: number): {any}
 	ll.LinksetDataWrite("NT5_Free", string.char(link) .. ll.LinksetDataRead("NT5_Free"))
 	return {
 		PRIM_LINK_TARGET, link,
@@ -146,7 +146,7 @@ end
 
 
 
-function createTextCluster(obj: {any}?)
+local function createTextCluster(obj: {any}?)
 	local cluster: Cluster = {
 		pos = Styling.position,
 		rot = Styling.rotation,
@@ -160,7 +160,7 @@ function createTextCluster(obj: {any}?)
 	return cluster
 end
 
-function splitTextIsland(force: boolean?)
+local function splitTextIsland(force: boolean?)
 	local newIsland = true
 	if not force then
 		if workingIsland then
@@ -212,7 +212,7 @@ end
 
 
 -- Writes text into a virtual 2D canvas through a cluster of islands, each representing a mesh prim
-function write(text: string, styles: {[string]: any}?)
+local function write(text: string, styles: {[string]: any}?)
 	if text == "" then return end
 	
 	-- Apply temporary styles
@@ -266,8 +266,6 @@ function write(text: string, styles: {[string]: any}?)
 				
 				if not switchedToProportional then whitespace += FontFixedUnit end
 			end
-		elseif activeFont.type == 'fixed' and char == " " then -- TODO: Force other whitespace to fixed width as well?
-			
 		elseif char == "\t" then -- Tab indentation
 			if newlines > 0 then
 				workingCluster.caret.x = 0
@@ -459,7 +457,7 @@ function write(text: string, styles: {[string]: any}?)
 end
 
 
-function render(renderedCluster: RenderedCluster?): RenderedCluster
+local function render(renderedCluster: RenderedCluster?): RenderedCluster
 	-- if cluster == nil then cluster = workingCluster end
 	
 	-- Remove last island if empty
@@ -627,7 +625,7 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 	return renderedCluster
 end
 
-function markdown(text: string, styles: {[string]: any})
+local function markdown(text: string, styles: {[string]: any})
 	for _, line in text:split("\n") do
 		local trimmed = line:match("^%s*(.-)%s*$")
 		
