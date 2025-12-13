@@ -185,8 +185,6 @@ Customising the web app's generator can allow you to change the fonts, texture a
     - Might be able to get away with only adding bold and italic variants for main ASCII set
     - Hook into the markdown parser
     - Add as boolean styling options, e.g. `ctx.bold = true` / `{ italic = true }`
-- Tabular Figures
-    - This should be very easy to implement. I've done this before in a previous generation of the library. You'll be able to set it via the styles, e.g. `tabularFigures = true` and use the local override during a write call if you need to only toggle it for a moment
 - Strokes / Outlined Glyphs
     - I'd like to have a version of the font that has glyphs with an outline/outer stroke, this is for a sort of high-contrast mode
     - When drawing glyphs against a complex background like when floating text in HUD or in-world it can be hard to distinguish the text against the background, by having a white text/black outline or vice versa it can be much easier to read
