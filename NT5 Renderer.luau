@@ -17,11 +17,23 @@ local Styling = {
 	lineHeight = 1.2,
 	textWrapLength = 4.0,
 	color = vector(1,1,1),
+	tabularFigures = false,
 }
 local activeFont = Fonts[1]
 local workingCluster: Cluster = nil
 local workingIsland: Island = nil
 local resume = { caret = { x = 0, y = 0 }, whitespace = 0 }
+local tabularFiguresWidth = 0;
+
+-- Use widest number glyph as width for tabular figures
+for _, char in {"0","1","2","3","4","5","6","7","8","9"} do
+    local metrics = ll.LinksetDataRead("NT5_" .. char)
+    metrics = lljson.decode(`[{metrics}]`)
+    local glyphWidth = metrics[4]
+    tabularFiguresWidth = math.max(tabularFiguresWidth, glyphWidth)
+end
+
+
 
 type Font = {
 	type: "proportional" | "fixed",
@@ -314,6 +326,7 @@ function write(text: string, styles: {[string]: any}?)
 			if workingIsland.type == 'proportional' then
 				-- Load type-specific metrics
 				glyphWidth = metrics[4]
+				if Styling.tabularFigures and char:match("%d") then glyphWidth = tabularFiguresWidth end
 				leftGap = metrics[5] - (FontBaseUnit*.5 + glyphWidth*.5)
 				rightGap = metrics[6] - (FontBaseUnit*.5 + glyphWidth*.5)
 				isColor = metrics[7] == 1 and true or false

@@ -2,7 +2,7 @@ local ctx = require("./NT5 Renderer.luau")
 ctx.textWrapLength = 7
 
 local message = {}
-local timeStyling = { color = vector(.5,.5,.5) }
+local timeStyling = { color = vector(.5,.5,.5), tabularFigures = true }
 local avatarNameStyling = { color = vector(.2,.7,1) }
 local objectNameStyling = { color = vector(.2,.8,.3) }
 local textStyling = { color = vector(1, 1, 1) }
@@ -70,6 +70,7 @@ function relayoutMessages()
         position = position - vector(0, 0, cluster.height)
     end
 end
+
 
 LLEvents:on('listen', function(channel: number, name: string, identifier: uuid, text: string)
     newMessage(os.time(), identifier, text)
