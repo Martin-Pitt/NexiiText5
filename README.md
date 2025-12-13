@@ -188,6 +188,9 @@ Customising the web app's generator can allow you to change the fonts, texture a
 - Strokes / Outlined Glyphs
     - I'd like to have a version of the font that has glyphs with an outline/outer stroke, this is for a sort of high-contrast mode
     - When drawing glyphs against a complex background like when floating text in HUD or in-world it can be hard to distinguish the text against the background, by having a white text/black outline or vice versa it can be much easier to read
+- Custom Emojis, e.g. 7TV?
+- Halfwidth monospace
+    - Some characters/fonts render at 'half-width' rather than full-width of the em square when it comes to the monospace/fixed-width fonts. Should be able to squish the prim in half for these.
 
 
 ## Mesh
