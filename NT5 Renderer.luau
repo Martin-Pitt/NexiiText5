@@ -1,5 +1,3 @@
---@file NT5 Test.luau
-
 if ll.LinksetDataRead("NT5_Fonts") == "" then
 	error("There is no font saved into Linkset Data, did you forget to drop in the NT5 Data Loader script first to setup the object?")
 end
@@ -90,18 +88,7 @@ export type RenderedCluster = {
 -- Scan linkset
 local function ScanLinkset(resetAll: boolean?)
 	local free: any = {}
-	for link = 1, ll.GetNumberOfPrims() do
-		local name = ll.GetLinkName(link)
-		if name == "Text" then
-			local desc = table.unpack(ll.GetLinkPrimitiveParams(link, {PRIM_DESC}))
-			if resetAll or desc == "Free" or desc == "(No Description)" then
-				table.insert(free, string.char(link))
-			end
-		end
-	end
-	free = table.concat(free)
-	ll.LinksetDataWrite("NT5_Free", free)
-	
+	local params = {}
 	local resetParams = {
 		PRIM_SIZE, vector(.01,.01,.01),
 		PRIM_POS_LOCAL, vector.zero,
@@ -110,19 +97,31 @@ local function ScanLinkset(resetAll: boolean?)
 		PRIM_COLOR, ALL_SIDES, vector.one, 1,
 		PRIM_TEXTURE, ALL_SIDES, TEXTURE_TRANSPARENT, vector(1,1,0), vector(0,0,0), 0,
 	} :: {any}
-	local params = {}
-	for iterator = 1, #free do
-		table.insert(params, PRIM_LINK_TARGET)
-		table.insert(params, string.byte(free, iterator, iterator))
-		for _, param in resetParams do table.insert(params, param) end
+	
+	for link = 1, ll.GetNumberOfPrims() do
+		local name = ll.GetLinkName(link)
+		if name == "Text" then
+			local desc = table.unpack(ll.GetLinkPrimitiveParams(link, {PRIM_DESC}))
+			if resetAll or desc == "Free" or desc == "(No Description)" then
+				table.insert(free, string.char(link))
+				table.insert(params, PRIM_LINK_TARGET)
+				table.insert(params, link)
+				for _, param in resetParams do table.insert(params, param) end
+				if #params > 1000 then
+					ll.SetLinkPrimitiveParamsFast(0, params)
+					params = {}
+				end
+			end
+		end
 	end
-	ll.SetLinkPrimitiveParamsFast(0, params)
+	ll.LinksetDataWrite("NT5_Free", table.concat(free))
+	if #params then ll.SetLinkPrimitiveParamsFast(0, params) end
 end
 
 ScanLinkset()
 
 -- Linkset management
-local function reservePrim(): number
+function reservePrim(): number
 	local free = ll.LinksetDataRead("NT5_Free")
 	if #free == 0 then error("No free text prims available in linkset") end
 	local link = string.byte(free, 1, 1)
@@ -130,7 +129,7 @@ local function reservePrim(): number
 	return link
 end
 
-local function releasePrim(link: number): {any}
+function releasePrim(link: number): {any}
 	ll.LinksetDataWrite("NT5_Free", string.char(link) .. ll.LinksetDataRead("NT5_Free"))
 	return {
 		PRIM_LINK_TARGET, link,
@@ -146,7 +145,7 @@ end
 
 
 
-local function createTextCluster(obj: {any}?)
+function createTextCluster(obj: {any}?)
 	local cluster: Cluster = {
 		pos = Styling.position,
 		rot = Styling.rotation,
@@ -160,7 +159,7 @@ local function createTextCluster(obj: {any}?)
 	return cluster
 end
 
-local function splitTextIsland(force: boolean?)
+function splitTextIsland(force: boolean?)
 	local newIsland = true
 	if not force then
 		if workingIsland then
@@ -212,7 +211,7 @@ end
 
 
 -- Writes text into a virtual 2D canvas through a cluster of islands, each representing a mesh prim
-local function write(text: string, styles: {[string]: any}?)
+function write(text: string, styles: {[string]: any}?)
 	if text == "" then return end
 	
 	-- Apply temporary styles
@@ -266,6 +265,8 @@ local function write(text: string, styles: {[string]: any}?)
 				
 				if not switchedToProportional then whitespace += FontFixedUnit end
 			end
+		elseif activeFont.type == 'fixed' and char == " " then -- TODO: Force other whitespace to fixed width as well?
+			
 		elseif char == "\t" then -- Tab indentation
 			if newlines > 0 then
 				workingCluster.caret.x = 0
@@ -413,7 +414,7 @@ local function write(text: string, styles: {[string]: any}?)
 				local texture = Textures[textureIndex]
 				workingCluster.caret.x += addedWidth
 				
-				for _ = 0, whitespace, FontFixedUnit do
+				for step = 0, whitespace, FontFixedUnit do
 					local emptyFace = nil
 					table.insert(workingIsland.faces, emptyFace)
 				end
@@ -457,7 +458,7 @@ local function write(text: string, styles: {[string]: any}?)
 end
 
 
-local function render(renderedCluster: RenderedCluster?): RenderedCluster
+function render(renderedCluster: RenderedCluster?): RenderedCluster
 	-- if cluster == nil then cluster = workingCluster end
 	
 	-- Remove last island if empty
@@ -609,23 +610,23 @@ local function render(renderedCluster: RenderedCluster?): RenderedCluster
 	
 	ll.SetLinkPrimitiveParamsFast(0, params)
 	
-	renderedCluster = {
+	local renderedCluster: RenderedCluster = {
 		pos = workingCluster.pos,
 		rot = workingCluster.rot,
 		width = right - left,
 		height = top - bottom,
 		links = linksetNumbers,
-	} :: RenderedCluster
+	}
 	
 	resume.caret = workingCluster.caret
 	resume.whitespace = workingCluster.whitespace
 	workingCluster = nil
 	workingIsland = nil
 	
-	return renderedCluster :: RenderedCluster
+	return renderedCluster
 end
 
-local function markdown(text: string, styles: {[string]: any})
+function markdown(text: string, styles: {[string]: any})
 	for _, line in text:split("\n") do
 		local trimmed = line:match("^%s*(.-)%s*$")
 		
