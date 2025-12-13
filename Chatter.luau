@@ -1,19 +1,38 @@
 local ctx = require("./NT5 Renderer.luau")
+ctx.textWrapLength = 7
 
 local message = {}
-
 local timeStyling = { color = vector(.5,.5,.5) }
-local nameStyling = { color = vector(.2,.7,1) }
+local avatarNameStyling = { color = vector(.2,.7,1) }
+local objectNameStyling = { color = vector(.2,.8,.3) }
 local textStyling = { color = vector(1, 1, 1) }
 
-
-function newMessage(time: number, name: string, text: string)
+function newMessage(time: number, identifier: uuid, text: string)
     ctx.write(os.date("[%H:%M] "), timeStyling)
-    ctx.write(name .. ": ", nameStyling)
+    
+    local name
+    local nameStyling
+    if ll.GetAgentSize(identifier) ~= vector.zero then
+        nameStyling = avatarNameStyling
+        name = ll.GetDisplayName(identifier)
+        if name == "" or name == "???" or name == "Loading..." then name = ll.GetUsername(name) end
+    else
+        nameStyling = objectNameStyling
+        name = ll.Key2Name(identifier)
+    end
+    
+    if text:find("^/me ") then
+        name ..= " "
+        text = text:sub(#"/me " + 1)
+    else
+        name ..= ": "
+    end
+    
+    ctx.write(name, nameStyling)
     ctx.write(text, textStyling)
     local cluster = ctx.render()
     table.insert(message, cluster)
-    if #message > 5 then
+    if #message > 10 then
         ctx.release(table.remove(message, 1))
     end
 end
@@ -53,7 +72,7 @@ function relayoutMessages()
 end
 
 LLEvents:on('listen', function(channel: number, name: string, identifier: uuid, text: string)
-    newMessage(os.time(), name, text)
+    newMessage(os.time(), identifier, text)
     relayoutMessages()
 end)
 
