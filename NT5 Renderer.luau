@@ -100,7 +100,7 @@ export type RenderedCluster = {
 -- Scan linkset
 local function ScanLinkset(resetAll: boolean?)
 	local free: any = {}
-	local params = {}
+	local params = table.create(1000);
 	local resetParams = {
 		PRIM_SIZE, vector(.01,.01,.01),
 		PRIM_POS_LOCAL, vector.zero,
@@ -483,7 +483,7 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 		workingCluster.rot = renderedCluster.rot
 	end
 	local linksetNumbers: {number} = if renderedCluster then renderedCluster.links else table.create(#workingCluster.islands, nil)
-	local params: {any} = {}
+	local params: {any} = table.create(500);
 	
 	-- Release any excess linkset numbers in reverse order with table.remove
 	for index = #linksetNumbers, #workingCluster.islands + 1, -1 do
@@ -512,7 +512,7 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 		
 		if island.color then
 			table.insert(params, PRIM_COLOR)
-			table.insert(params, 0)
+			table.insert(params, ALL_SIDES)
 			table.insert(params, island.color)
 			table.insert(params, 1)
 		end
@@ -619,6 +619,11 @@ function render(renderedCluster: RenderedCluster?): RenderedCluster
 			table.insert(params, PRIM_SIZE)
 			table.insert(params, size)
 		end
+		
+		if #params > 400 then
+			ll.SetLinkPrimitiveParamsFast(0, params)
+			params = table.create(500);
+		end
 	end
 	
 	ll.SetLinkPrimitiveParamsFast(0, params)
@@ -702,7 +707,7 @@ local TextRenderingContext = setmetatable({
 	resume = function() workingCluster = createTextCluster(resume) end,
 	markdown = markdown,
 	release = function(cluster: RenderedCluster)
-		local params = {}
+		local params = table.create(256);
 		for _, link in cluster.links do
 			local releaseParams = releasePrim(link)
 			for _, param in releaseParams do table.insert(params, param) end
