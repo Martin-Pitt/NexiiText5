@@ -63,11 +63,14 @@ When you have finished writing text, you can call `ctx.render()` to finally rend
 
 You might need to be careful not to write too much into the virtual canvas with `ctx.write` as this is all stored into script memory, so regular `ctx.render()` calls can help clear memory. However sparse calls is also more optimal for fast rendering performance.
 
+Calling `.render` pushes out the working cluster into a rendered cluster and returns that.
+
+You can pass in a previous renderedCluster to re-render it. This will overwrite the text for replacing it with updated text. A re-render will reuse as many of the rendered prims as possible.
 
 ### `ctx.resume()`
 
 Resume writing from the end of the last `.write` call instead of at the current `Styling.position`
-
+This will allow you to continue `.write`ing from the last working cluster.
 
 ### `ctx.markdown(text: string, styles: {[string]: any})`
 
@@ -191,6 +194,7 @@ Customising the web app's generator can allow you to change the fonts, texture a
 - Custom Emojis, e.g. 7TV?
 - Halfwidth monospace
     - Some characters/fonts render at 'half-width' rather than full-width of the em square when it comes to the monospace/fixed-width fonts. Should be able to squish the prim in half for these.
+- Be able to switch out to monospace for rendering code, might be combined with above. I think all the characters may or may not have unicode codepoints to half-width versions -- will need to double check that for other characters like +-=/%*^()[]!<>,.?'";:#~ etc
 
 
 ## Mesh
