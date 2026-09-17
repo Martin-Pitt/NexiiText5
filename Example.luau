@@ -35,3 +35,4 @@ Learn more at: [martin-pitt.github.io/NexiiText5](https://martin-pitt.github.io/
 Enjoy using **NexiiText5**.
 ]], markdownStyling)
 ctx.render()
+
